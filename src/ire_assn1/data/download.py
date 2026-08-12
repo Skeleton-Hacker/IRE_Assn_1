@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import stat
+import urllib.request
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+
+from ire_assn1.data.configuration import (
+    DatasetConfig,
+    EbnerdDatasetConfig,
+    MindDatasetConfig,
+    load_data_config,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadedArchive:
+    url: str
+    archive: Path
+    extracted: Path
+
+
+def _download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file() and destination.stat().st_size > 0:
+        return
+    temporary = destination.with_suffix(f"{destination.suffix}.part")
+    request = urllib.request.Request(url, headers={"User-Agent": "ire-assn1/0.1"})
+    try:
+        with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
+            shutil.copyfileobj(response, output)
+        if temporary.stat().st_size == 0:
+            raise ValueError(f"Downloaded archive is empty: {url}")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _validate_member(destination: Path, member: zipfile.ZipInfo) -> None:
+    target = (destination / member.filename).resolve()
+    if not target.is_relative_to(destination.resolve()):
+        raise ValueError(f"Unsafe archive path: {member.filename}")
+    mode = member.external_attr >> 16
+    if stat.S_ISLNK(mode):
+        raise ValueError(f"Archive symlinks are not supported: {member.filename}")
+
+
+def _extract_archive(archive: Path, destination: Path, url: str) -> None:
+    marker = destination / ".complete.json"
+    if marker.is_file():
+        return
+    destination.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as source:
+        for member in source.infolist():
+            _validate_member(destination, member)
+        source.extractall(destination)
+    payload = json.dumps({"archive": archive.name, "url": url}, sort_keys=True)
+    marker.write_text(f"{payload}\n", encoding="utf-8")
+
+
+def _download_archive(url: str, archive: Path, extracted: Path) -> DownloadedArchive:
+    _download_file(url, archive)
+    if not zipfile.is_zipfile(archive):
+        raise ValueError(f"Invalid ZIP archive: {archive}")
+    _extract_archive(archive, extracted, url)
+    return DownloadedArchive(url=url, archive=archive, extracted=extracted)
+
+
+def download_dataset(config: DatasetConfig, data_root: Path) -> tuple[DownloadedArchive, ...]:
+    root = data_root / "raw" / config.name / config.variant
+    archives = root / "archives"
+    if isinstance(config, MindDatasetConfig):
+        return (
+            _download_archive(
+                config.train_url,
+                archives / config.train_archive,
+                root / "train",
+            ),
+            _download_archive(
+                config.validation_url,
+                archives / config.validation_archive,
+                root / "official_validation",
+            ),
+        )
+    if isinstance(config, EbnerdDatasetConfig):
+        return (
+            _download_archive(
+                config.archive_url,
+                archives / config.archive,
+                root / "extracted",
+            ),
+        )
+    raise TypeError(f"Unsupported dataset configuration: {type(config)}")
+
+
+def download_from_config(config_path: str | Path) -> tuple[DownloadedArchive, ...]:
+    data_root, datasets = load_data_config(config_path)
+    downloaded: list[DownloadedArchive] = []
+    for dataset in datasets:
+        downloaded.extend(download_dataset(dataset, data_root))
+    return tuple(downloaded)
