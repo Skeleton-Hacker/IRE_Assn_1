@@ -1,0 +1,14 @@
+{
+  "include": ["../../src", "../../tests"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": false,
+  "executionEnvironments": [
+    {
+      "root": "../..",
+      "extraPaths": ["../../src"]
+    }
+  ],
+  "venvPath": "../../.pixi/envs",
+  "venv": "default"
+}

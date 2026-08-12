@@ -1,0 +1,9 @@
+name: mind
+variant: small
+language: en
+train_url: https://huggingface.co/datasets/yjw1029/MIND/resolve/main/MINDsmall_train.zip
+validation_url: https://huggingface.co/datasets/yjw1029/MIND/resolve/main/MINDsmall_dev.zip
+train_archive: MINDsmall_train.zip
+validation_archive: MINDsmall_dev.zip
+availability: first_seen
+validation_days: 1

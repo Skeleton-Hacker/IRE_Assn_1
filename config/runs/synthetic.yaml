@@ -1,0 +1,7 @@
+name: synthetic
+variant: fixture
+system: fixture
+seed: 146
+input: tests/fixtures/synthetic
+output: output/synthetic
+evaluation: config/evaluation.yaml

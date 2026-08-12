@@ -1,0 +1,5 @@
+fractions: [0.25, 0.5, 1.0]
+repetitions: 3
+seed: 146
+semantic_indexes: [exact, hnsw]
+extrapolation_factor: 10

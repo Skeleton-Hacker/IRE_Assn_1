@@ -13,4 +13,24 @@ wheels/
 .pixi/*
 !.pixi/config.toml
 
-instructions
+/instructions/
+
+/data/
+/models/
+/output/*
+!/output/.gitkeep
+/plots/*
+!/plots/.gitkeep
+/logs/*
+!/logs/.gitkeep
+/.worktrees/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+*.zip
+*.pt
+*.ckpt
+*.npy
+*.faiss
+*.log

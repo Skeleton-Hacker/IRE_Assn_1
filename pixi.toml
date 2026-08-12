@@ -2,9 +2,66 @@
 authors = ["skeleton-hacker <yajatrangnekar@gmail.com>"]
 channels = ["conda-forge"]
 name = "Assn_1"
-platforms = ["linux-64"]
+platforms = [{ platform = "linux-64", cuda = "12" }]
 version = "0.1.0"
 
 [tasks]
+ire-assn1 = "python -m ire_assn1"
+lint = "ruff check --config config/tooling/ruff.toml src tests"
+format-check = "ruff format --config config/tooling/ruff.toml --check src tests"
+typecheck = "pyright --project config/tooling/pyrightconfig.json"
+test = "pytest -q"
+check = { depends-on = ["lint", "format-check", "typecheck", "test"] }
+eval-synthetic = "python -m ire_assn1 evaluate --config config/runs/synthetic.yaml"
+validate-run = "python -m ire_assn1 validate-run"
+download = "python -m ire_assn1 download --config config/base.yaml"
+prepare = "python -m ire_assn1 prepare --config config/base.yaml"
+reproduce = "python -m ire_assn1 reproduce --config config/base.yaml"
+doctor = "python -m ire_assn1 doctor --config config/base.yaml"
+prepare-mind = "python -m ire_assn1 prepare --config config/datasets/mind-small.yaml"
+prepare-ebnerd-demo = "python -m ire_assn1 prepare --config config/datasets/ebnerd-demo.yaml"
+prepare-ebnerd-small = "python -m ire_assn1 prepare --config config/datasets/ebnerd-small.yaml"
+retrieve-mind-bm25 = "python -m ire_assn1 retrieve --config config/runs/mind-bm25.yaml"
+retrieve-mind-bge = "python -m ire_assn1 retrieve --config config/runs/mind-bge.yaml"
+retrieve-ebnerd-bm25 = "python -m ire_assn1 retrieve --config config/runs/ebnerd-bm25.yaml"
+retrieve-ebnerd-bge = "python -m ire_assn1 retrieve --config config/runs/ebnerd-bge.yaml"
+evaluate-mind-bm25 = "python -m ire_assn1 evaluate --config config/runs/mind-bm25.yaml"
+evaluate-mind-bge = "python -m ire_assn1 evaluate --config config/runs/mind-bge.yaml"
+evaluate-ebnerd-bm25 = "python -m ire_assn1 evaluate --config config/runs/ebnerd-bm25.yaml"
+evaluate-ebnerd-bge = "python -m ire_assn1 evaluate --config config/runs/ebnerd-bge.yaml"
 
 [dependencies]
+python = "3.12.*"
+matplotlib = ">=3.9,<4"
+numpy = ">=1.26,<3"
+polars = ">=1.8,<2"
+psutil = ">=6,<8"
+pyarrow = ">=17,<22"
+pydantic = ">=2.9,<3"
+pyright = ">=1.1.380,<2"
+pytest = ">=8.3,<9"
+pyyaml = ">=6,<7"
+requests = ">=2.32,<3"
+ruff = ">=0.6,<1"
+scikit-learn = ">=1.5,<2"
+scipy = ">=1.14,<2"
+typer = ">=0.12,<1"
+
+[pypi-dependencies]
+bm25s = ">=0.2.14,<0.3"
+
+[feature.cpu.dependencies]
+faiss-cpu = ">=1.8,<2"
+
+[feature.gpu.dependencies]
+faiss-gpu = ">=1.8,<2"
+pytorch-gpu = ">=2.4,<3"
+sentence-transformers = ">=3.1,<6"
+
+[environments]
+default = { features = ["cpu"], solve-group = "cpu" }
+gpu = { features = ["gpu"], solve-group = "gpu" }
+
+[activation.env]
+PYTHONPATH = "$PIXI_PROJECT_ROOT/src"
+HF_HOME = "$PIXI_PROJECT_ROOT/models/huggingface"

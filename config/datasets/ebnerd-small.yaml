@@ -1,0 +1,7 @@
+name: ebnerd
+variant: small
+language: da
+archive_url: https://ebnerd-dataset.s3.eu-west-1.amazonaws.com/ebnerd_small.zip
+archive: ebnerd_small.zip
+availability: published_at
+validation_days: 1

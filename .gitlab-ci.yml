@@ -1,0 +1,17 @@
+default:
+  image: ghcr.io/prefix-dev/pixi:0.49.0
+
+stages:
+  - verify
+
+verify:
+  stage: verify
+  script:
+    - pixi run check
+    - pixi run eval-synthetic
+  cache:
+    key:
+      files:
+        - pixi.lock
+    paths:
+      - .pixi

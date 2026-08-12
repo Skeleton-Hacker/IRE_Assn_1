@@ -1,0 +1,10 @@
+system: bge
+model: BAAI/bge-m3
+revision: 5617a9f
+text_fields: [title, abstract]
+batch_size: 16
+history_lengths: [5, 10, 20, null]
+selection_metric: recall_at_100
+index: exact
+hnsw_m: 32
+hnsw_ef_search: 128

@@ -1,0 +1,5 @@
+extends:
+  - config/datasets/mind-small.yaml
+  - config/retrieval/bge.yaml
+evaluation: config/evaluation.yaml
+benchmark: config/benchmark.yaml

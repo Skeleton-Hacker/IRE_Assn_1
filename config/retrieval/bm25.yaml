@@ -1,0 +1,7 @@
+system: bm25
+text_fields: [title, abstract]
+k1: 1.2
+b: 0.75
+history_lengths: [5, 10, 20, null]
+selection_metric: recall_at_100
+stemming: false
