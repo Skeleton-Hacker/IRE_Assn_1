@@ -8,6 +8,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 
 from ire_assn1.data.configuration import (
     DatasetConfig,
@@ -31,8 +32,13 @@ def _download_file(url: str, destination: Path) -> None:
     temporary = destination.with_suffix(f"{destination.suffix}.part")
     request = urllib.request.Request(url, headers={"User-Agent": "ire-assn1/0.1"})
     try:
-        with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
-            shutil.copyfileobj(response, output)
+        try:
+            with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
+                shutil.copyfileobj(response, output)
+        except HTTPError as error:
+            raise RuntimeError(f"Dataset download returned HTTP {error.code}: {url}") from error
+        except URLError as error:
+            raise RuntimeError(f"Dataset download failed for {url}: {error.reason}") from error
         if temporary.stat().st_size == 0:
             raise ValueError(f"Downloaded archive is empty: {url}")
         os.replace(temporary, destination)
