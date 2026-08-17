@@ -23,10 +23,14 @@ the source tree and that file to the HPC. Do not clone, pull, or configure Git c
 shared cluster. The source manifest is verified before an official run.
 
 On the HPC, place the Pixi environment and package cache on persistent scratch. Set `SCRATCH` to
-the cluster's persistent scratch path if it is not already defined.
+the cluster's persistent scratch path if it is not already defined. Set `HF_TOKEN` in the shell
+without putting it in a file, command history, configuration, or run manifest.
 
 ```bash
 cd ~/IRE/Assn_1
+read -rsp "Hugging Face read token: " HF_TOKEN
+printf '\n'
+export HF_TOKEN
 export IRE_PIXI_ROOT="$SCRATCH/ire-assn1-pixi"
 mkdir -p "$IRE_PIXI_ROOT/env" "$IRE_PIXI_ROOT/cache"
 if [ -L .pixi ]; then
