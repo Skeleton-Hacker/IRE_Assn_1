@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 import importlib
 import json
 import platform
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +10,7 @@ from typing import Any, Literal
 import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
+from ire_assn1.experiments.provenance import sha256_file, source_identity
 from ire_assn1.paths import ROOT, project_path
 from ire_assn1.settings import config_hash
 
@@ -48,6 +47,8 @@ class RunManifest(BaseModel):
     git_sha: str
     git_dirty: bool
     reportable: bool
+    source_kind: Literal["git", "manifest"] | None = None
+    source_tree_sha256: str | None = None
     config_sha256: str
     lock_sha256: str | None
     resolved_config: dict[str, Any]
@@ -57,14 +58,6 @@ class RunManifest(BaseModel):
     memory_bytes: int
     device: dict[str, Any]
     stages: list[StageRecord] = Field(default_factory=list)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def artifact(path: Path) -> ArtifactRecord:
@@ -78,24 +71,6 @@ def artifact(path: Path) -> ArtifactRecord:
         sha256=sha256_file(resolved),
         size_bytes=resolved.stat().st_size,
     )
-
-
-def git_identity() -> tuple[str, bool]:
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    return sha, bool(status.strip())
 
 
 def device_identity() -> dict[str, Any]:
@@ -125,18 +100,20 @@ def create_manifest(
     resolved_config: dict[str, Any],
     allow_dirty: bool = False,
 ) -> RunManifest:
-    sha, dirty = git_identity()
-    if dirty and not allow_dirty:
+    identity = source_identity()
+    if identity.git_dirty and not allow_dirty:
         raise RuntimeError("Official runs require a clean Git tree")
     timestamp = datetime.now(UTC)
-    run_id = f"{name}-{variant}-{system}-{timestamp:%Y%m%dT%H%M%SZ}-{sha[:7]}"
+    run_id = f"{name}-{variant}-{system}-{timestamp:%Y%m%dT%H%M%SZ}-{identity.git_sha[:7]}"
     lock = project_path("pixi.lock")
     return RunManifest(
         run_id=run_id,
         created_at=timestamp,
-        git_sha=sha,
-        git_dirty=dirty,
-        reportable=not dirty,
+        git_sha=identity.git_sha,
+        git_dirty=identity.git_dirty,
+        reportable=not identity.git_dirty,
+        source_kind=identity.kind,
+        source_tree_sha256=identity.tree_sha256,
         config_sha256=config_hash(resolved_config),
         lock_sha256=sha256_file(lock) if lock.exists() else None,
         resolved_config=resolved_config,

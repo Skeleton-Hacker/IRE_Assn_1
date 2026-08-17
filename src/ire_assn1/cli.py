@@ -16,6 +16,16 @@ def doctor(config: ConfigOption = Path("config/base.yaml")) -> None:
     run_doctor(config)
 
 
+@app.command("source-manifest")
+def source_manifest(
+    output: Annotated[Path, typer.Option("--output", dir_okay=False)] = Path(".ire-source.json"),
+    allow_dirty: bool = typer.Option(False),
+) -> None:
+    from ire_assn1.experiments.provenance import write_source_manifest
+
+    print(write_source_manifest(output, allow_dirty=allow_dirty))
+
+
 @app.command()
 def download(config: ConfigOption = Path("config/base.yaml")) -> None:
     from ire_assn1.data.download import download_from_config

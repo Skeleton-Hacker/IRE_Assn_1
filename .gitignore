@@ -24,6 +24,7 @@ wheels/
 /logs/*
 !/logs/.gitkeep
 /.worktrees/
+/.ire-source.json
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

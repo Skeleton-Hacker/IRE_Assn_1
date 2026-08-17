@@ -3,11 +3,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from ire_assn1.paths import ROOT, project_path
+from ire_assn1.experiments.provenance import provenance_report
+from ire_assn1.paths import project_path
 from ire_assn1.settings import load_config
 
 
@@ -26,16 +26,8 @@ def run_doctor(config: Path) -> None:
     ]
     for path in paths:
         project_path(path).mkdir(parents=True, exist_ok=True)
-    git = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
     usage = shutil.disk_usage(project_path(root.paths.data))
     result: dict[str, Any] = {
-        "git_clean": not bool(git.stdout.strip()),
         "disk_free_bytes": usage.free,
         "imports": {
             name: check_import(name)
@@ -50,6 +42,7 @@ def run_doctor(config: Path) -> None:
             ]
         },
     }
+    result["provenance"] = provenance_report()
     if result["imports"]["torch"]:
         import importlib
 
