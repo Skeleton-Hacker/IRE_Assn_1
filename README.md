@@ -29,10 +29,14 @@ the cluster's persistent scratch path if it is not already defined.
 cd ~/IRE/Assn_1
 export IRE_PIXI_ROOT="$SCRATCH/ire-assn1-pixi"
 mkdir -p "$IRE_PIXI_ROOT/env" "$IRE_PIXI_ROOT/cache"
-if [ -e .pixi ] || [ -L .pixi ]; then
+if [ -L .pixi ]; then
+    test "$(readlink .pixi)" = "$IRE_PIXI_ROOT/env"
+elif [ -e .pixi ]; then
     mv .pixi "$IRE_PIXI_ROOT/env-incomplete-$(date +%Y%m%d-%H%M%S)"
+    ln -s "$IRE_PIXI_ROOT/env" .pixi
+else
+    ln -s "$IRE_PIXI_ROOT/env" .pixi
 fi
-ln -s "$IRE_PIXI_ROOT/env" .pixi
 export PIXI_CACHE_DIR="$IRE_PIXI_ROOT/cache"
 pixi install --locked -e gpu
 pixi run -e gpu doctor
