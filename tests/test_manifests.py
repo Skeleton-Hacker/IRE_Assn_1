@@ -35,6 +35,8 @@ def test_source_manifest_roundtrip(tmp_path: Path) -> None:
     assert loaded.git_sha
     assert loaded.tree_sha256
     assert loaded.files
+    assert all("__pycache__" not in file.path for file in loaded.files)
+    assert all(not file.path.endswith((".pyc", ".pyo")) for file in loaded.files)
 
 
 def test_source_manifest_fallback_without_git(monkeypatch, tmp_path: Path) -> None:

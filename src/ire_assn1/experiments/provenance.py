@@ -66,10 +66,15 @@ def _source_paths() -> list[Path]:
     for relative in SOURCE_PATHS:
         path = project_path(relative)
         if path.is_file():
-            paths.append(relative)
+            if relative.suffix not in {".pyc", ".pyo"}:
+                paths.append(relative)
         elif path.is_dir():
             paths.extend(
-                candidate.relative_to(ROOT) for candidate in path.rglob("*") if candidate.is_file()
+                candidate.relative_to(ROOT)
+                for candidate in path.rglob("*")
+                if candidate.is_file()
+                and "__pycache__" not in candidate.parts
+                and candidate.suffix not in {".pyc", ".pyo"}
             )
         else:
             raise SourceUnavailableError(f"Required source path is missing: {relative}")
