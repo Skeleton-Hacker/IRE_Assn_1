@@ -109,6 +109,10 @@ the pipeline verifies every recorded file before creating an official run manife
 reports Git or source-manifest provenance without requiring GitLab credentials. Missing or modified
 provenance remains non-reportable and is never treated as a clean checkout.
 
+MIND archives are downloaded from the gated Hugging Face repository using the read token named by
+the dataset `auth_env` field, defaulting to `HF_TOKEN`. The token is read only from the process
+environment and is never written to configuration, logs, manifests, or error messages.
+
 ## Verification And Completion
 
 Synthetic fixtures assert schemas, chronological splitting, article availability, no future-click

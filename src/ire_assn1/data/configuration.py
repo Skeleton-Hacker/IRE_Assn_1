@@ -17,6 +17,7 @@ class MindDatasetConfig(BaseModel):
     language: Literal["en"]
     train_url: str
     validation_url: str
+    auth_env: str = Field(default="HF_TOKEN", min_length=1)
     train_archive: str
     validation_archive: str
     availability: Literal["first_seen"]

@@ -25,17 +25,28 @@ class DownloadedArchive:
     extracted: Path
 
 
-def _download_file(url: str, destination: Path) -> None:
+def _download_file(url: str, destination: Path, auth_env: str | None = None) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file() and destination.stat().st_size > 0:
         return
+    token = os.environ.get(auth_env) if auth_env else None
+    if auth_env and not token:
+        raise RuntimeError(f"Missing {auth_env}; set it to a valid read token before downloading")
     temporary = destination.with_suffix(f"{destination.suffix}.part")
-    request = urllib.request.Request(url, headers={"User-Agent": "ire-assn1/0.1"})
+    headers = {"User-Agent": "ire-assn1/0.1"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
     try:
         try:
             with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
                 shutil.copyfileobj(response, output)
         except HTTPError as error:
+            if auth_env and error.code in {401, 403}:
+                raise RuntimeError(
+                    f"Dataset download returned HTTP {error.code} for {url}; "
+                    f"check that {auth_env} contains a valid read token"
+                ) from error
             raise RuntimeError(f"Dataset download returned HTTP {error.code}: {url}") from error
         except URLError as error:
             raise RuntimeError(f"Dataset download failed for {url}: {error.reason}") from error
@@ -68,8 +79,13 @@ def _extract_archive(archive: Path, destination: Path, url: str) -> None:
     marker.write_text(f"{payload}\n", encoding="utf-8")
 
 
-def _download_archive(url: str, archive: Path, extracted: Path) -> DownloadedArchive:
-    _download_file(url, archive)
+def _download_archive(
+    url: str,
+    archive: Path,
+    extracted: Path,
+    auth_env: str | None = None,
+) -> DownloadedArchive:
+    _download_file(url, archive, auth_env=auth_env)
     if not zipfile.is_zipfile(archive):
         raise ValueError(f"Invalid ZIP archive: {archive}")
     _extract_archive(archive, extracted, url)
@@ -85,11 +101,13 @@ def download_dataset(config: DatasetConfig, data_root: Path) -> tuple[Downloaded
                 config.train_url,
                 archives / config.train_archive,
                 root / "train",
+                auth_env=config.auth_env,
             ),
             _download_archive(
                 config.validation_url,
                 archives / config.validation_archive,
                 root / "official_validation",
+                auth_env=config.auth_env,
             ),
         )
     if isinstance(config, EbnerdDatasetConfig):
