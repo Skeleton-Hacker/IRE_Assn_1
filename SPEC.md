@@ -87,19 +87,27 @@ memory scaling, PCA, and sampled t-SNE.
 
 ## Commands And Artifacts
 
-The `ire-assn1` Typer CLI exposes `doctor`, `download`, `prepare`, `retrieve`, `evaluate`,
-`benchmark`, `plot`, `submit`, `bundle-run`, `validate-run`, and `reproduce`. Pixi exposes local
-verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the complete
-pipeline, while every stage remains independently runnable.
+The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prepare`, `retrieve`,
+`evaluate`, `benchmark`, `plot`, `submit`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
+exposes local verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the
+complete pipeline, while every stage remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.
 Visualizations reside below `plots`.
 
-Official runs require a clean Git tree. Run manifests include Git revision and status, resolved
+Official runs require a clean Git tree or a verified source manifest generated from one. Run
+manifests include Git revision and status, provenance source kind, source tree hash, resolved
 configuration and hash, Pixi lock hash, input and output checksums, dataset variant, model revision,
 seeds, device information, timings, memory, and stage states. Cached stages are reusable only when
 their code, configuration, and input identities match.
+
+The `source-manifest` command writes the ignored `.ire-source.json` transfer artifact from a clean
+Git checkout. It records the source revision and hashes of the code, configuration, specification,
+Pixi manifest, and lockfile. A transferred HPC checkout may omit `.git` and use this manifest;
+the pipeline verifies every recorded file before creating an official run manifest. `doctor`
+reports Git or source-manifest provenance without requiring GitLab credentials. Missing or modified
+provenance remains non-reportable and is never treated as a clean checkout.
 
 ## Verification And Completion
 
