@@ -7,6 +7,7 @@ This repository implements lexical and semantic news retrieval for MIND-small an
 Ensure the `pixi` version installed is `0.76.1`
 
 ```bash
+git config core.hooksPath .githooks
 pixi install
 pixi run check
 pixi run eval-synthetic
