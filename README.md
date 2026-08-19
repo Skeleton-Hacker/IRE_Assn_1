@@ -32,6 +32,7 @@ setup script, and never included in source manifests.
 cd ~/IRE/Assn_1
 cp .env.example .env
 ${EDITOR:-vi} .env
+# Run your per-node symlink.sh first if ~/.cache is not already on scratch.
 bash scripts/setup_gnode.sh
 pixi run -e gpu reproduce
 ```
