@@ -83,7 +83,7 @@ def _parse_entities(value: str) -> tuple[str, ...]:
 def _read_article_rows(path: Path) -> Iterable[tuple[int, list[str]]]:
     with path.open("r", encoding="utf-8", newline="") as source:
         for line_number, line in enumerate(source, start=1):
-            row = next(csv.reader([line], delimiter="\t"), [])
+            row = next(csv.reader([line], delimiter="\t", quoting=csv.QUOTE_NONE), [])
             if len(row) != 8:
                 repaired: list[str] = []
                 for value in row:
