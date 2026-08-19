@@ -24,27 +24,15 @@ the source tree and that file to the HPC. Do not clone, pull, or configure Git c
 shared cluster. The source manifest is verified before an official run.
 
 On the HPC, place the Pixi environment and package cache on persistent scratch. Set `SCRATCH` to
-the cluster's persistent scratch path if it is not already defined. Set `HF_TOKEN` in the shell
-without putting it in a file, command history, configuration, or run manifest.
+the cluster's persistent scratch path if it is not already defined. Create `.env` from
+`.env.example` on the HPC and fill its TODO fields. `.env` is ignored, permission-tightened by the
+setup script, and never included in source manifests.
 
 ```bash
 cd ~/IRE/Assn_1
-read -rsp "Hugging Face read token: " HF_TOKEN
-printf '\n'
-export HF_TOKEN
-export IRE_PIXI_ROOT="$SCRATCH/ire-assn1-pixi"
-mkdir -p "$IRE_PIXI_ROOT/env" "$IRE_PIXI_ROOT/cache"
-if [ -L .pixi ]; then
-    test "$(readlink .pixi)" = "$IRE_PIXI_ROOT/env"
-elif [ -e .pixi ]; then
-    mv .pixi "$IRE_PIXI_ROOT/env-incomplete-$(date +%Y%m%d-%H%M%S)"
-    ln -s "$IRE_PIXI_ROOT/env" .pixi
-else
-    ln -s "$IRE_PIXI_ROOT/env" .pixi
-fi
-export PIXI_CACHE_DIR="$IRE_PIXI_ROOT/cache"
-pixi install --locked -e gpu
-pixi run -e gpu doctor
+cp .env.example .env
+${EDITOR:-vi} .env
+bash scripts/setup_gnode.sh
 pixi run -e gpu reproduce
 ```
 

@@ -113,6 +113,10 @@ MIND archives are downloaded from the gated Hugging Face repository using the re
 the dataset `auth_env` field, defaulting to `HF_TOKEN`. The token is read only from the process
 environment and is never written to configuration, logs, manifests, or error messages.
 
+The tracked `scripts/setup_gnode.sh` command is the HPC environment setup entry point. It reads the
+ignored `.env`, requires `SCRATCH_ROOT` and `HF_TOKEN`, keeps datasets under `data`, links `.pixi`
+and `models` to persistent scratch, installs the locked GPU environment, and runs `doctor`.
+
 ## Verification And Completion
 
 Synthetic fixtures assert schemas, chronological splitting, article availability, no future-click
