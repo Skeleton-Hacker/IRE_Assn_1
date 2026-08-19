@@ -92,7 +92,8 @@ The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prep
 `evaluate`, `benchmark`, `plot`, `submit`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
 exposes local verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the
 small smoke pipeline. `pixi run -e gpu reproduce-codabench` executes the large-dataset pipeline
-for submission preparation. Every stage remains independently runnable.
+for submission preparation. `sbatch sbatch.sh` runs the large pipeline in a four-day Slurm
+allocation. Every stage remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.

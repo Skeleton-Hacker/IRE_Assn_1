@@ -47,6 +47,17 @@ must use the large datasets:
 pixi run -e gpu reproduce-codabench
 ```
 
+For a non-interactive four-day Slurm allocation, set the `#SBATCH -w` value in `sbatch.sh` to an
+available node, then submit it from the repository root:
+
+```bash
+sbatch sbatch.sh
+```
+
+The batch script runs the per-node cache symlink setup, initializes the GPU environment, sources
+the private `.env`, and runs the large Codabench configuration. Set `IRE_CONFIG=config/base.yaml`
+before submission only when a small smoke run is intended.
+
 Downloads, archive extraction, embedding, indexing, validation, and retrieval display `tqdm`
 progress where work is measurable. Cached stages can complete without showing work for that stage.
 
