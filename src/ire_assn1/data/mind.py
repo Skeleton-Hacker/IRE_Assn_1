@@ -84,8 +84,12 @@ def _read_article_rows(path: Path) -> Iterable[tuple[int, list[str]]]:
     with path.open("r", encoding="utf-8", newline="") as source:
         for line_number, line in enumerate(source, start=1):
             row = next(csv.reader([line], delimiter="\t"), [])
-            if len(row) != 8 and "\\t" in line:
-                row = next(csv.reader([line.replace("\\t", "\t")], delimiter="\t"), [])
+            if len(row) != 8:
+                repaired: list[str] = []
+                for value in row:
+                    normalized = value.replace("\\\\t", "\t").replace("\\t", "\t")
+                    repaired.extend(normalized.split("\t"))
+                row = repaired
             yield line_number, row
 
 
