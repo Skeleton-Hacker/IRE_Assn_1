@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tqdm.auto import tqdm
+
 from ire_assn1.data.configuration import (
     DatasetConfig,
     EbnerdDatasetConfig,
@@ -36,4 +38,7 @@ def prepare_dataset(config: DatasetConfig, data_root: Path) -> PreparationResult
 
 def prepare_from_config(config_path: str | Path) -> tuple[PreparationResult, ...]:
     data_root, datasets = load_data_config(config_path)
-    return tuple(prepare_dataset(dataset, data_root) for dataset in datasets)
+    return tuple(
+        prepare_dataset(dataset, data_root)
+        for dataset in tqdm(datasets, desc="prepare datasets", unit="dataset")
+    )
