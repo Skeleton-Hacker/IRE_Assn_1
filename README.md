@@ -34,6 +34,9 @@ cp .env.example .env
 ${EDITOR:-vi} .env
 # Run your per-node symlink.sh first if ~/.cache is not already on scratch.
 bash scripts/setup_gnode.sh
+set -a
+. .env
+set +a
 pixi run -e gpu reproduce
 ```
 
