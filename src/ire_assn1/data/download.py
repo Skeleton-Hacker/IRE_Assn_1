@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import stat
 import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+
+from tqdm.auto import tqdm
 
 from ire_assn1.data.configuration import (
     DatasetConfig,
@@ -40,7 +41,21 @@ def _download_file(url: str, destination: Path, auth_env: str | None = None) -> 
     try:
         try:
             with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
-                shutil.copyfileobj(response, output)
+                headers = getattr(response, "headers", None)
+                content_length = headers.get("Content-Length") if headers is not None else None
+                total = int(content_length) if content_length else None
+                progress = tqdm(
+                    total=total,
+                    desc=f"download {destination.name}",
+                    unit="B",
+                    unit_scale=True,
+                )
+                try:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        progress.update(len(chunk))
+                finally:
+                    progress.close()
         except HTTPError as error:
             if auth_env and error.code in {401, 403}:
                 raise RuntimeError(
@@ -72,9 +87,12 @@ def _extract_archive(archive: Path, destination: Path, url: str) -> None:
         return
     destination.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as source:
-        for member in source.infolist():
+        members = source.infolist()
+        for member in members:
             _validate_member(destination, member)
-        source.extractall(destination)
+        with tqdm(members, desc=f"extract {archive.name}", unit="file") as progress:
+            for member in progress:
+                source.extract(member, destination)
     payload = json.dumps({"archive": archive.name, "url": url}, sort_keys=True)
     marker.write_text(f"{payload}\n", encoding="utf-8")
 

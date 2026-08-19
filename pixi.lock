@@ -264,6 +264,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.7.0-pyhd8ed1ab_0.conda
       - pypi: https://files.pythonhosted.org/packages/7c/3e/e3ae2f0fb0f8f46f9c787fa419ca5203ff850d0630749a26baf0a6570453/bm25s-0.2.14-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl
   gpu:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -5900,4 +5901,18 @@ packages:
   - huggingface-hub ; extra == 'hf'
   - jax[cpu] ; extra == 'selection'
   - pystemmer ; extra == 'stem'
+  requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl
+  name: tqdm
+  version: 4.70.0
+  sha256: 7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953
+  requires_dist:
+  - colorama ; sys_platform == 'win32'
+  - requests ; extra == 'discord'
+  - envwrap ; extra == 'discord'
+  - slack-sdk ; extra == 'slack'
+  - envwrap ; extra == 'slack'
+  - requests ; extra == 'telegram'
+  - envwrap ; extra == 'telegram'
+  - ipywidgets>=6 ; extra == 'notebook'
   requires_python: '>=3.8'

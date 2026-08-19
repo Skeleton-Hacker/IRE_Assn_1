@@ -67,7 +67,7 @@ class BGEEncoder:
         vectors = self._load().encode(
             texts,
             batch_size=self.batch_size,
-            show_progress_bar=False,
+            show_progress_bar=True,
             convert_to_numpy=True,
             normalize_embeddings=True,
         )

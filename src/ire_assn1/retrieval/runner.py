@@ -11,6 +11,7 @@ from typing import cast
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+from tqdm.auto import tqdm
 
 from ire_assn1.paths import project_path
 from ire_assn1.retrieval.bge import BGEEncoder, DenseRetriever
@@ -339,7 +340,7 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
             selected,
             200,
         )
-        for impression in evaluated
+        for impression in tqdm(evaluated, desc=f"{system} full-corpus retrieval", unit="impression")
     )
     candidate_results = tuple(
         impression_candidate_scoring(
@@ -350,7 +351,7 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
             popularity,
             selected,
         )
-        for impression in evaluated
+        for impression in tqdm(evaluated, desc=f"{system} candidate scoring", unit="impression")
     )
     full_rows = _write_results(output_directory / "full_corpus.parquet", full_results)
     candidate_rows = _write_results(

@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from collections.abc import Collection, Iterable, Mapping, Sequence
 
+from tqdm.auto import tqdm
+
 from ire_assn1.retrieval.profiles import (
     PopularityModel,
     build_history_profile,
@@ -192,7 +194,11 @@ def evaluate_history_lengths(
     scores: dict[int | None, float] = {}
     for history_length in candidates:
         recalls: list[float] = []
-        for impression in validation:
+        for impression in tqdm(
+            validation,
+            desc=f"{retriever.system} validation history={history_length}",
+            unit="impression",
+        ):
             relevant = set(impression.clicked_ids)
             if not relevant:
                 continue

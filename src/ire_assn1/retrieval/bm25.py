@@ -57,7 +57,7 @@ class BM25Retriever:
         if self.article_ids:
             self._backend.index(
                 [self.documents[article_id] for article_id in self.article_ids],
-                show_progress=False,
+                show_progress=True,
             )
 
     @property
@@ -91,7 +91,7 @@ class BM25Retriever:
             [query],
             corpus=self.article_ids,
             k=len(self.article_ids),
-            show_progress=False,
+            show_progress=True,
         )
         return {
             str(article_id): float(score)
