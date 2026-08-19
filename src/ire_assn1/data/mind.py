@@ -80,24 +80,33 @@ def _parse_entities(value: str) -> tuple[str, ...]:
     return tuple(entities)
 
 
+def _read_article_rows(path: Path) -> Iterable[tuple[int, list[str]]]:
+    with path.open("r", encoding="utf-8", newline="") as source:
+        for line_number, line in enumerate(source, start=1):
+            row = next(csv.reader([line], delimiter="\t"), [])
+            if len(row) != 8 and "\\t" in line:
+                row = next(csv.reader([line.replace("\\t", "\t")], delimiter="\t"), [])
+            yield line_number, row
+
+
 def read_mind_articles(path: Path) -> tuple[MindArticle, ...]:
     articles: list[MindArticle] = []
-    with path.open("r", encoding="utf-8", newline="") as source:
-        reader = csv.reader(source, delimiter="\t")
-        for line_number, row in enumerate(reader, start=1):
-            if len(row) != 8:
-                raise ValueError(f"Invalid MIND news row at {path}:{line_number}")
-            entities = _parse_entities(row[6]) + _parse_entities(row[7])
-            articles.append(
-                MindArticle(
-                    article_id=row[0],
-                    category=_optional_text(row[1]),
-                    subcategory=_optional_text(row[2]),
-                    title=row[3].strip(),
-                    abstract=row[4].strip(),
-                    entities=tuple(dict.fromkeys(entities)),
-                )
+    for line_number, row in _read_article_rows(path):
+        if len(row) != 8:
+            raise ValueError(
+                f"Invalid MIND news row at {path}:{line_number}: expected 8 fields, got {len(row)}"
             )
+        entities = _parse_entities(row[6]) + _parse_entities(row[7])
+        articles.append(
+            MindArticle(
+                article_id=row[0],
+                category=_optional_text(row[1]),
+                subcategory=_optional_text(row[2]),
+                title=row[3].strip(),
+                abstract=row[4].strip(),
+                entities=tuple(dict.fromkeys(entities)),
+            )
+        )
     return tuple(articles)
 
 
