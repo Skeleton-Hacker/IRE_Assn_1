@@ -1,6 +1,6 @@
 # IRE Assignment 1
 
-This repository implements lexical and semantic news retrieval for MIND-small and EB-NeRD.
+This repository implements lexical and semantic news retrieval for MIND and EB-NeRD.
 
 ## Local Verification
 
@@ -23,8 +23,8 @@ Generate `.ire-source.json` locally from the clean commit that will be evaluated
 the source tree and that file to the HPC. Do not clone, pull, or configure Git credentials on the
 shared cluster. The source manifest is verified before an official run.
 
-On the HPC, place the Pixi environment and package cache on persistent scratch. Set `SCRATCH` to
-the cluster's persistent scratch path if it is not already defined. Create `.env` from
+On the HPC, place the Pixi environment and package cache on persistent scratch. Set `SCRATCH_ROOT`
+to the cluster's persistent scratch path. Create `.env` from
 `.env.example` on the HPC and fill its TODO fields. `.env` is ignored, permission-tightened by the
 setup script, and never included in source manifests.
 
@@ -39,6 +39,16 @@ set -a
 set +a
 pixi run -e gpu reproduce
 ```
+
+The default `reproduce` command uses the small datasets for smoke testing. The Codabench workflow
+must use the large datasets:
+
+```bash
+pixi run -e gpu reproduce-codabench
+```
+
+Downloads, archive extraction, embedding, indexing, validation, and retrieval display `tqdm`
+progress where work is measurable. Cached stages can complete without showing work for that stage.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean

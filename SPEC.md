@@ -2,15 +2,16 @@
 
 ## Objective
 
-Build reproducible lexical and semantic retrieval pipelines for MIND-small and EB-NeRD. Both
+Build reproducible lexical and semantic retrieval pipelines for MIND and EB-NeRD. Both
 systems use article title and abstract. Article bodies are optional dataset fields and are excluded
 from the primary comparison. The pipeline must rebuild raw data, feature stores, retrieval outputs,
 evaluation summaries, benchmark evidence, visualizations, and Codabench submissions.
 
 ## Dataset Variants And Splits
 
-Supported variants are `mind-small`, `ebnerd-demo`, and `ebnerd-small`. MIND-small and
-EB-NeRD-small are final experiment variants. EB-NeRD-demo is the real-data smoke variant.
+Supported variants are `mind-small`, `mind-large`, `ebnerd-demo`, `ebnerd-small`, and
+`ebnerd-large`. The small variants are local smoke-test and validation inputs. The large variants
+are required for Codabench submissions. EB-NeRD-demo is an additional real-data smoke variant.
 
 The official labeled validation package is the offline test period. The latest complete day in the
 official training package is validation. Earlier official training impressions are training data.
@@ -90,7 +91,8 @@ memory scaling, PCA, and sampled t-SNE.
 The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prepare`, `retrieve`,
 `evaluate`, `benchmark`, `plot`, `submit`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
 exposes local verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the
-complete pipeline, while every stage remains independently runnable.
+small smoke pipeline. `pixi run -e gpu reproduce-codabench` executes the large-dataset pipeline
+for submission preparation. Every stage remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.
@@ -119,6 +121,9 @@ and `models` to persistent scratch, reuses a pre-existing scratch symlink for ei
 pre-existing `~/.cache` scratch symlink for Pixi’s package cache, installs the locked GPU environment,
 and runs `doctor`. Because it runs as a child process, callers source `.env` separately before
 starting subsequent commands that need `HF_TOKEN`.
+
+Long-running downloads, extraction, embedding, indexing, validation, and retrieval operations
+report progress with `tqdm`. A cached operation may skip its progress display.
 
 ## Verification And Completion
 

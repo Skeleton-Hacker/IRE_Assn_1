@@ -13,7 +13,7 @@ class MindDatasetConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Literal["mind"]
-    variant: Literal["small"]
+    variant: Literal["small", "large"]
     language: Literal["en"]
     train_url: str
     validation_url: str
@@ -28,7 +28,7 @@ class EbnerdDatasetConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Literal["ebnerd"]
-    variant: Literal["demo", "small"]
+    variant: Literal["demo", "small", "large"]
     language: Literal["da"]
     archive_url: str
     archive: str
