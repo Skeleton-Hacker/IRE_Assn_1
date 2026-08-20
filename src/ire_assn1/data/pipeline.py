@@ -10,8 +10,16 @@ from ire_assn1.data.configuration import (
     MindDatasetConfig,
     load_data_config,
 )
-from ire_assn1.data.ebnerd import prepare_ebnerd, prepare_ebnerd_streaming
-from ire_assn1.data.mind import prepare_mind, prepare_mind_streaming
+from ire_assn1.data.ebnerd import (
+    prepare_ebnerd,
+    prepare_ebnerd_competition_streaming,
+    prepare_ebnerd_streaming,
+)
+from ire_assn1.data.mind import (
+    prepare_mind,
+    prepare_mind_competition_streaming,
+    prepare_mind_streaming,
+)
 from ire_assn1.data.models import PreparationResult
 from ire_assn1.data.store import write_feature_store
 
@@ -57,3 +65,38 @@ def prepare_from_config(config_path: str | Path) -> tuple[PreparationResult, ...
         prepare_dataset(dataset, data_root)
         for dataset in tqdm(datasets, desc="prepare datasets", unit="dataset")
     )
+
+
+def prepare_competition_from_config(config_path: str | Path) -> tuple[PreparationResult, ...]:
+    data_root, datasets = load_data_config(config_path)
+    results: list[PreparationResult] = []
+    for dataset in tqdm(datasets, desc="prepare competition datasets", unit="dataset"):
+        raw_root = data_root / "raw" / dataset.name / dataset.variant
+        if isinstance(dataset, MindDatasetConfig):
+            if dataset.variant != "large" or dataset.test_archive is None:
+                continue
+            results.append(
+                prepare_mind_competition_streaming(
+                    train_root=raw_root / "train",
+                    official_validation_root=raw_root / "official_validation",
+                    competition_test_root=raw_root / "competition_test",
+                    variant=dataset.variant,
+                    validation_days=dataset.validation_days,
+                    data_root=data_root,
+                )
+            )
+        elif isinstance(dataset, EbnerdDatasetConfig):
+            if dataset.variant != "large" or dataset.test_archive is None:
+                continue
+            results.append(
+                prepare_ebnerd_competition_streaming(
+                    offline_extracted_root=raw_root / "extracted",
+                    competition_root=raw_root / "competition_test",
+                    variant=dataset.variant,
+                    validation_days=dataset.validation_days,
+                    data_root=data_root,
+                )
+            )
+        else:
+            raise TypeError(f"Unsupported dataset configuration: {type(dataset)}")
+    return tuple(results)

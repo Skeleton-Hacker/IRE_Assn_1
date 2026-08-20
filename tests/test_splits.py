@@ -9,8 +9,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ire_assn1.data.ebnerd import prepare_ebnerd, prepare_ebnerd_streaming
-from ire_assn1.data.mind import prepare_mind, prepare_mind_streaming
+from ire_assn1.data.ebnerd import (
+    prepare_ebnerd,
+    prepare_ebnerd_competition_streaming,
+    prepare_ebnerd_streaming,
+)
+from ire_assn1.data.mind import (
+    prepare_mind,
+    prepare_mind_competition_streaming,
+    prepare_mind_streaming,
+)
 from ire_assn1.data.pipeline import prepare_from_config
 from ire_assn1.data.splits import official_temporal_split
 
@@ -87,7 +95,36 @@ def test_large_mind_ingestion_streams_feature_store_rows(tmp_path: Path) -> None
     assert pq.read_table(result.output_dir / "impressions.parquet").num_rows == 4
 
 
-def _write_ebnerd_fixture(root: Path) -> None:
+def test_mind_competition_ingestion_is_separate_and_unlabeled(tmp_path: Path) -> None:
+    raw_root = tmp_path / "raw" / "mind" / "large"
+    shutil.copytree(FIXTURES / "mind" / "train", raw_root / "train")
+    shutil.copytree(FIXTURES / "mind" / "official_validation", raw_root / "official_validation")
+    shutil.copytree(FIXTURES / "mind" / "official_validation", raw_root / "competition_test")
+    (raw_root / "competition_test" / "behaviors.tsv").write_text(
+        "5\tU3\t11/16/2019 12:00:00 PM\tN1\tN4 N3\n",
+        encoding="utf-8",
+    )
+
+    result = prepare_mind_competition_streaming(
+        raw_root / "train",
+        raw_root / "official_validation",
+        raw_root / "competition_test",
+        variant="large",
+        validation_days=1,
+        data_root=tmp_path / "data",
+    )
+
+    assert result.output_dir is not None
+    assert result.output_dir == (
+        tmp_path / "data" / "processed" / "mind" / "large" / "competition_test"
+    )
+    impressions = pq.read_table(result.output_dir / "impressions.parquet").to_pylist()
+    assert len(impressions) == 1
+    assert impressions[0]["source_split"] == "competition_test"
+    assert impressions[0]["labels"] == [0, 0]
+
+
+def _write_ebnerd_fixture(root: Path, include_competition: bool = False) -> None:
     dataset = root / "ebnerd_demo"
     train = dataset / "train"
     validation = dataset / "validation"
@@ -171,6 +208,36 @@ def _write_ebnerd_fixture(root: Path) -> None:
         ),
         validation / "history.parquet",
     )
+    if include_competition:
+        competition = root / "competition_test"
+        competition.mkdir()
+        pq.write_table(
+            pq.read_table(dataset / "articles.parquet"), competition / "articles.parquet"
+        )
+        pq.write_table(
+            pa.table(
+                {
+                    "impression_id": pa.array([13], type=pa.uint32()),
+                    "user_id": pa.array([2], type=pa.uint32()),
+                    "session_id": pa.array([103], type=pa.uint32()),
+                    "impression_time": pa.array([datetime(2023, 6, 4, 9)], type=pa.timestamp("us")),
+                    "article_ids_inview": pa.array([[1, 4]], type=pa.list_(pa.int32())),
+                }
+            ),
+            competition / "behaviors.parquet",
+        )
+        pq.write_table(
+            pa.table(
+                {
+                    "user_id": pa.array([2], type=pa.uint32()),
+                    "article_id_fixed": pa.array([[1]], type=pa.list_(pa.int32())),
+                    "impression_time_fixed": pa.array(
+                        [[datetime(2023, 6, 1)]], type=pa.list_(pa.timestamp("us"))
+                    ),
+                }
+            ),
+            competition / "history.parquet",
+        )
 
 
 def test_ebnerd_ingestion_maps_official_parquet_columns(tmp_path: Path) -> None:
@@ -216,6 +283,27 @@ def test_large_ebnerd_ingestion_streams_feature_store_rows(tmp_path: Path) -> No
     }
     assert result.output_dir is not None
     assert pq.read_table(result.output_dir / "articles.parquet").num_rows == 4
+
+
+def test_ebnerd_competition_ingestion_accepts_missing_clicks(tmp_path: Path) -> None:
+    _write_ebnerd_fixture(tmp_path, include_competition=True)
+
+    result = prepare_ebnerd_competition_streaming(
+        tmp_path / "ebnerd_demo",
+        tmp_path / "competition_test",
+        variant="large",
+        validation_days=1,
+        data_root=tmp_path / "data",
+    )
+
+    assert result.output_dir is not None
+    assert result.output_dir == (
+        tmp_path / "data" / "processed" / "ebnerd" / "large" / "competition_test"
+    )
+    impressions = pq.read_table(result.output_dir / "impressions.parquet").to_pylist()
+    assert len(impressions) == 1
+    assert impressions[0]["source_split"] == "competition_test"
+    assert impressions[0]["labels"] == [0, 0]
 
 
 def test_config_driven_preparation_writes_feature_store(tmp_path: Path) -> None:

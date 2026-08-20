@@ -3,8 +3,10 @@ variant: large
 language: en
 train_url: https://huggingface.co/datasets/yjw1029/MIND/resolve/main/MINDlarge_train.zip
 validation_url: https://huggingface.co/datasets/yjw1029/MIND/resolve/main/MINDlarge_dev.zip
+test_url: https://huggingface.co/datasets/yjw1029/MIND/resolve/main/MINDlarge_test.zip
 auth_env: HF_TOKEN
 train_archive: MINDlarge_train.zip
 validation_archive: MINDlarge_dev.zip
+test_archive: MINDlarge_test.zip
 availability: first_seen
 validation_days: 1

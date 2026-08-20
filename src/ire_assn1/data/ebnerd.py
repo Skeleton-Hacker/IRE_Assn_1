@@ -179,7 +179,12 @@ def _normalize_behavior_table(
     columns = _resolve_columns(table, BEHAVIOR_COLUMNS, optional=("session_id", "clicked_ids"))
     impressions: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
-    users: dict[SourceSplit, set[str]] = {"train": set(), "validation": set(), "test": set()}
+    users: dict[SourceSplit, set[str]] = {
+        "train": set(),
+        "validation": set(),
+        "test": set(),
+        "competition_test": set(),
+    }
     for row in table.to_pylist():
         timestamp = _datetime(_required(row, columns["timestamp"], "timestamp"), "timestamp")
         source_split = (
@@ -541,7 +546,12 @@ def prepare_ebnerd_streaming(
         (train_history_path, ("train", "validation")),
         (test_history_path, ("test",)),
     )
-    users: dict[SourceSplit, set[str]] = {"train": set(), "validation": set(), "test": set()}
+    users: dict[SourceSplit, set[str]] = {
+        "train": set(),
+        "validation": set(),
+        "test": set(),
+        "competition_test": set(),
+    }
     stats = {"article_duplicates": 0, "article_conflicts": 0}
     data_root.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -604,3 +614,89 @@ def prepare_ebnerd_streaming(
         ),
     )
     return result
+
+
+def _discover_competition_files(root: Path) -> tuple[Path, Path, Path]:
+    article_paths = tuple(root.rglob("articles.parquet"))
+    behavior_paths = tuple(root.rglob("behaviors.parquet"))
+    if len(article_paths) != 1 or len(behavior_paths) != 1:
+        raise FileNotFoundError(
+            f"Expected one articles.parquet and one behaviors.parquet below {root}"
+        )
+    history_path = behavior_paths[0].with_name("history.parquet")
+    if not history_path.is_file():
+        raise FileNotFoundError(f"Expected history.parquet beside {behavior_paths[0]}")
+    return article_paths[0], behavior_paths[0], history_path
+
+
+def prepare_ebnerd_competition_streaming(
+    offline_extracted_root: Path,
+    competition_root: Path,
+    variant: str,
+    validation_days: int,
+    data_root: Path,
+) -> PreparationResult:
+    identity = DatasetIdentity(name="ebnerd", variant=variant)
+    (_, train_behavior_path, _, _, _) = _discover_files(offline_extracted_root)
+    article_path, behavior_path, history_path = _discover_competition_files(competition_root)
+    temporal_split = official_temporal_split(
+        _parquet_timestamps(train_behavior_path), validation_days
+    )
+    test_start = min(_parquet_timestamps(behavior_path), default=None)
+    if test_start is None:
+        raise ValueError("EB-NeRD competition test package is empty")
+    users: dict[SourceSplit, set[str]] = {
+        "train": set(),
+        "validation": set(),
+        "test": set(),
+        "competition_test": set(),
+    }
+    stats = {"article_duplicates": 0, "article_conflicts": 0}
+    output_dir = data_root / "processed" / identity.name / identity.variant / "competition_test"
+    data_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix="ebnerd-competition-", suffix=".sqlite", dir=data_root, delete=False
+    ) as temporary:
+        database_path = Path(temporary.name)
+    connection = sqlite3.connect(database_path)
+    try:
+        result = write_feature_store_chunks(
+            identity,
+            PreparationStats(
+                article_conflicts=0,
+                article_duplicates=0,
+                validation_start=temporal_split.validation_start,
+            ),
+            {
+                "articles": _stream_ebnerd_articles(
+                    article_path,
+                    identity,
+                    temporal_split,
+                    test_start,
+                    connection,
+                    stats,
+                ),
+                "impressions": _stream_ebnerd_behaviors(
+                    behavior_path, identity, "competition_test", users, "impressions"
+                ),
+                "candidates": _stream_ebnerd_behaviors(
+                    behavior_path, identity, "competition_test", users, "candidates"
+                ),
+                "histories": _stream_ebnerd_histories(
+                    history_path, identity, ("competition_test",), users
+                ),
+            },
+            data_root,
+            output_dir=output_dir,
+        )
+    finally:
+        connection.close()
+        database_path.unlink(missing_ok=True)
+    return replace(
+        result,
+        stats=PreparationStats(
+            article_conflicts=stats["article_conflicts"],
+            article_duplicates=stats["article_duplicates"],
+            validation_start=temporal_split.validation_start,
+        ),
+    )

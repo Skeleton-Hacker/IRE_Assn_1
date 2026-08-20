@@ -86,8 +86,9 @@ def write_feature_store_chunks(
     stats: PreparationStats,
     chunks: Mapping[str, Iterable[Sequence[Mapping[str, object]]]],
     data_root: Path,
+    output_dir: Path | None = None,
 ) -> PreparationResult:
-    output_dir = data_root / "processed" / identity.name / identity.variant
+    output_dir = output_dir or data_root / "processed" / identity.name / identity.variant
     output_dir.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}
     if set(chunks) != set(TABLE_SCHEMAS):

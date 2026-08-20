@@ -114,7 +114,7 @@ def download_dataset(config: DatasetConfig, data_root: Path) -> tuple[Downloaded
     root = data_root / "raw" / config.name / config.variant
     archives = root / "archives"
     if isinstance(config, MindDatasetConfig):
-        return (
+        downloaded = [
             _download_archive(
                 config.train_url,
                 archives / config.train_archive,
@@ -127,15 +127,34 @@ def download_dataset(config: DatasetConfig, data_root: Path) -> tuple[Downloaded
                 root / "official_validation",
                 auth_env=config.auth_env,
             ),
-        )
+        ]
+        if config.test_url and config.test_archive:
+            downloaded.append(
+                _download_archive(
+                    config.test_url,
+                    archives / config.test_archive,
+                    root / "competition_test",
+                    auth_env=config.auth_env,
+                )
+            )
+        return tuple(downloaded)
     if isinstance(config, EbnerdDatasetConfig):
-        return (
+        downloaded = [
             _download_archive(
                 config.archive_url,
                 archives / config.archive,
                 root / "extracted",
             ),
-        )
+        ]
+        if config.test_archive_url and config.test_archive:
+            downloaded.append(
+                _download_archive(
+                    config.test_archive_url,
+                    archives / config.test_archive,
+                    root / "competition_test",
+                )
+            )
+        return tuple(downloaded)
     raise TypeError(f"Unsupported dataset configuration: {type(config)}")
 
 

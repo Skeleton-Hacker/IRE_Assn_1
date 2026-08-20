@@ -17,9 +17,11 @@ class MindDatasetConfig(BaseModel):
     language: Literal["en"]
     train_url: str
     validation_url: str
+    test_url: str | None = None
     auth_env: str = Field(default="HF_TOKEN", min_length=1)
     train_archive: str
     validation_archive: str
+    test_archive: str | None = None
     availability: Literal["first_seen"]
     validation_days: int = Field(default=1, ge=1)
 
@@ -32,6 +34,8 @@ class EbnerdDatasetConfig(BaseModel):
     language: Literal["da"]
     archive_url: str
     archive: str
+    test_archive_url: str | None = None
+    test_archive: str | None = None
     availability: Literal["published_at"]
     validation_days: int = Field(default=1, ge=1)
 

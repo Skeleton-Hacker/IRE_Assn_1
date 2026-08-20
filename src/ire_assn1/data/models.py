@@ -8,7 +8,7 @@ from typing import Literal
 
 import pyarrow as pa
 
-SourceSplit = Literal["train", "validation", "test"]
+SourceSplit = Literal["train", "validation", "test", "competition_test"]
 
 
 @dataclass(frozen=True, slots=True)

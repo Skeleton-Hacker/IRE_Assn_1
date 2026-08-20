@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ire_assn1.data.contracts import (
     ARTICLES_SCHEMA,
@@ -52,6 +52,8 @@ class MindBehavior:
 
     @property
     def clicked_ids(self) -> tuple[str, ...]:
+        if not self.labels:
+            return ()
         return tuple(
             article_id
             for article_id, label in zip(self.candidate_ids, self.labels, strict=True)
@@ -126,14 +128,24 @@ def _iter_mind_behaviors(path: Path) -> Iterable[MindBehavior]:
                 raise ValueError(f"Invalid MIND behavior row at {path}:{line_number}")
             candidates: list[str] = []
             labels: list[int] = []
+            unlabeled: list[str] = []
             for impression in row[4].split():
                 article_id, separator, raw_label = impression.rpartition("-")
-                if separator != "-" or raw_label not in {"0", "1"}:
+                if separator != "-":
+                    unlabeled.append(impression)
+                    continue
+                if raw_label not in {"0", "1"}:
                     raise ValueError(
                         f"Invalid MIND impression token at {path}:{line_number}: {impression}"
                     )
                 candidates.append(article_id)
                 labels.append(int(raw_label))
+            if unlabeled and labels:
+                raise ValueError(
+                    f"Mixed labeled and unlabeled MIND impressions at {path}:{line_number}"
+                )
+            if unlabeled:
+                candidates = unlabeled
             yield MindBehavior(
                 impression_id=row[0],
                 user_id=row[1],
@@ -152,7 +164,7 @@ def mind_first_seen(
     packages: Iterable[tuple[Sequence[MindBehavior], SourceSplit | TemporalSplit]],
 ) -> dict[str, tuple[datetime, SourceSplit]]:
     first_seen: dict[str, tuple[datetime, SourceSplit]] = {}
-    priority = {"train": 0, "validation": 1, "test": 2}
+    priority = {"train": 0, "validation": 1, "test": 2, "competition_test": 3}
     for behaviors, split_rule in packages:
         for behavior in behaviors:
             split = (
@@ -230,12 +242,12 @@ def _normalize_behaviors(
                     "timestamp": behavior.timestamp,
                     "candidate_ids": candidate_ids,
                     "clicked_ids": clicked_ids,
-                    "labels": list(behavior.labels),
+                    "labels": list(_mind_labels(behavior)),
                     "source_split": source_split,
                 }
             )
             for position, (article_id, label) in enumerate(
-                zip(candidate_ids, behavior.labels, strict=True)
+                zip(candidate_ids, _mind_labels(behavior), strict=True)
             ):
                 candidates.append(
                     {
@@ -322,6 +334,14 @@ def _mind_split(behavior: MindBehavior, split_rule: SourceSplit | TemporalSplit)
         if isinstance(split_rule, TemporalSplit)
         else split_rule
     )
+
+
+def _mind_labels(behavior: MindBehavior) -> tuple[int, ...]:
+    if not behavior.labels:
+        return (0,) * len(behavior.candidate_ids)
+    if len(behavior.labels) != len(behavior.candidate_ids):
+        raise ValueError(f"MIND labels do not match candidates for {behavior.impression_id}")
+    return behavior.labels
 
 
 def _chunks[T](rows: Iterable[T], size: int = 8192) -> Iterable[list[T]]:
@@ -426,7 +446,7 @@ def _mind_impression_rows(
                         identity.article_id(value) for value in behavior.candidate_ids
                     ],
                     "clicked_ids": [identity.article_id(value) for value in behavior.clicked_ids],
-                    "labels": list(behavior.labels),
+                    "labels": list(_mind_labels(behavior)),
                     "source_split": source_split,
                 }
         connection.commit()
@@ -451,7 +471,7 @@ def _mind_candidate_rows(
         for path, split_rule in paths
         for behavior in _iter_mind_behaviors(path)
         for position, (article_id, label) in enumerate(
-            zip(behavior.candidate_ids, behavior.labels, strict=True)
+            zip(behavior.candidate_ids, _mind_labels(behavior), strict=True)
         )
     )
     return _chunks(rows)
@@ -483,7 +503,11 @@ def prepare_mind_streaming(
     variant: str,
     validation_days: int,
     data_root: Path,
+    competition_test_root: Path | None = None,
+    competition_only: bool = False,
 ) -> PreparationResult:
+    if competition_only and competition_test_root is None:
+        raise ValueError("competition_test_root is required for competition-only preparation")
     data_root.mkdir(parents=True, exist_ok=True)
     identity = DatasetIdentity(name="mind", variant=variant)
     train_behavior_path = _find_single(train_root, "behaviors.tsv")
@@ -492,12 +516,26 @@ def prepare_mind_streaming(
         (behavior.timestamp for behavior in _iter_mind_behaviors(train_behavior_path)),
         validation_days,
     )
-    paths: tuple[tuple[Path, SourceSplit | TemporalSplit], ...] = (
+    path_list: list[tuple[Path, SourceSplit | TemporalSplit]] = [
         (train_behavior_path, temporal_split),
         (test_behavior_path, "test"),
-    )
+    ]
+    article_paths: list[Path] = [
+        _find_single(train_root, "news.tsv"),
+        _find_single(official_validation_root, "news.tsv"),
+    ]
+    if competition_test_root is not None:
+        path_list.append(
+            (
+                _find_single(competition_test_root, "behaviors.tsv"),
+                cast(SourceSplit, "competition_test"),
+            )
+        )
+        article_paths.append(_find_single(competition_test_root, "news.tsv"))
+    paths = tuple(path_list)
+    output_paths = paths[2:] if competition_only else paths
     availability: dict[str, tuple[datetime, SourceSplit]] = {}
-    priority = {"train": 0, "validation": 1, "test": 2}
+    priority = {"train": 0, "validation": 1, "test": 2, "competition_test": 3}
     for path, split_rule in paths:
         for behavior in _iter_mind_behaviors(path):
             source_split = _mind_split(behavior, split_rule)
@@ -533,20 +571,22 @@ def prepare_mind_streaming(
             ),
             {
                 "articles": _mind_article_rows(
-                    (
-                        _find_single(train_root, "news.tsv"),
-                        _find_single(official_validation_root, "news.tsv"),
-                    ),
+                    article_paths,
                     availability,
                     identity,
                     connection,
                     article_stats,
                 ),
-                "impressions": _mind_impression_rows(paths, identity, connection),
-                "candidates": _mind_candidate_rows(paths, identity),
+                "impressions": _mind_impression_rows(output_paths, identity, connection),
+                "candidates": _mind_candidate_rows(output_paths, identity),
                 "histories": _mind_history_rows(connection, identity),
             },
             data_root,
+            output_dir=(
+                data_root / "processed" / identity.name / identity.variant / "competition_test"
+                if competition_only
+                else None
+            ),
         )
     finally:
         connection.close()
@@ -558,4 +598,23 @@ def prepare_mind_streaming(
             article_duplicates=article_stats["article_duplicates"],
             validation_start=temporal_split.validation_start,
         ),
+    )
+
+
+def prepare_mind_competition_streaming(
+    train_root: Path,
+    official_validation_root: Path,
+    competition_test_root: Path,
+    variant: str,
+    validation_days: int,
+    data_root: Path,
+) -> PreparationResult:
+    return prepare_mind_streaming(
+        train_root=train_root,
+        official_validation_root=official_validation_root,
+        variant=variant,
+        validation_days=validation_days,
+        data_root=data_root,
+        competition_test_root=competition_test_root,
+        competition_only=True,
     )
