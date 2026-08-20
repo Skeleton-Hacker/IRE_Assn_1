@@ -421,3 +421,77 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         candidate_rows=candidate_rows,
         output_directory=output_directory,
     )
+
+
+def retrieve_competition_from_config(
+    config: str | Path | Mapping[str, object],
+) -> RetrievalRunSummary:
+    mapping = dict(config) if isinstance(config, Mapping) else load_mapping(config)
+    dataset = _value(mapping, "name", str)
+    variant = _value(mapping, "variant", str)
+    system = _value(mapping, "system", str)
+    data_root = project_path(str(mapping.get("data", "data")))
+    offline_directory = project_path(
+        str(mapping.get("input_directory", data_root / "processed" / dataset / variant))
+    )
+    competition_directory = offline_directory / "competition_test"
+    output_directory = (
+        project_path(
+            str(
+                mapping.get(
+                    "retrieval_output",
+                    data_root / "retrieval" / dataset / variant / system,
+                )
+            )
+        )
+        / "competition_test"
+    )
+    articles = _read_articles(competition_directory / "articles.parquet")
+    histories = _read_histories(competition_directory / "histories.parquet")
+    offline_impressions_path = offline_directory / "impressions.parquet"
+    competition_impressions_path = competition_directory / "impressions.parquet"
+    popularity = PopularityModel.from_impressions(_iter_impressions(offline_impressions_path))
+    selection_path = output_directory.parent / "selection.json"
+    selected = _selected_history_length(selection_path)
+    retriever = _create_retriever(mapping, articles, output_directory)
+    candidate_rows = _write_results(
+        output_directory / "impression_candidates.parquet",
+        (
+            impression_candidate_scoring(
+                impression,
+                histories.get((impression.user_id, "competition_test")),
+                articles,
+                retriever,
+                popularity,
+                selected,
+            )
+            for impression in tqdm(
+                _iter_impressions(competition_impressions_path),
+                desc=f"{system} competition candidate scoring",
+                unit="impression",
+            )
+        ),
+    )
+    selection = {
+        "dataset": dataset,
+        "variant": variant,
+        "system": system,
+        "selection_metric": "offline_recall_at_100",
+        "history_length": selected,
+        "candidate_rows": candidate_rows,
+    }
+    output_directory.mkdir(parents=True, exist_ok=True)
+    (output_directory / "selection.json").write_text(
+        json.dumps(selection, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return RetrievalRunSummary(
+        dataset=dataset,
+        variant=variant,
+        system=system,
+        history_length=selected,
+        validation_scores={},
+        full_corpus_rows=0,
+        candidate_rows=candidate_rows,
+        output_directory=output_directory,
+    )

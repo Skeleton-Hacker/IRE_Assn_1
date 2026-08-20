@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import math
+from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 from typing import Protocol, cast
 
@@ -53,7 +55,21 @@ class BM25Retriever:
         }
         self.article_ids = tuple(sorted(tokenized))
         self.documents = tokenized
+        self.document_lengths = {
+            article_id: len(tokens) for article_id, tokens in tokenized.items()
+        }
+        self.average_document_length = (
+            sum(self.document_lengths.values()) / len(self.document_lengths)
+            if self.document_lengths
+            else 0.0
+        )
+        document_frequency: Counter[str] = Counter()
+        for tokens in tokenized.values():
+            document_frequency.update(set(tokens))
+        self.document_frequency = document_frequency
         self._backend = _load_bm25()(k1=k1, b=b)
+        self.k1 = k1
+        self.b = b
         if self.article_ids:
             self._backend.index(
                 [self.documents[article_id] for article_id in self.article_ids],
@@ -119,9 +135,30 @@ class BM25Retriever:
         profile_article_ids: Sequence[str],
         candidate_ids: Collection[str],
     ) -> dict[str, float]:
-        candidates = set(candidate_ids)
-        return {
-            article_id: score
-            for article_id, score in self._all_scores(profile_article_ids).items()
-            if article_id in candidates
-        }
+        query_terms = set(self._query(profile_article_ids))
+        if not query_terms or not self.article_ids or self.average_document_length == 0:
+            return {
+                article_id: 0.0 for article_id in set(candidate_ids) if article_id in self.documents
+            }
+        scores: dict[str, float] = {}
+        document_count = len(self.article_ids)
+        for article_id in set(candidate_ids) & set(self.article_ids):
+            term_counts = Counter(self.documents[article_id])
+            document_length = self.document_lengths[article_id]
+            score = 0.0
+            for term in query_terms:
+                frequency = term_counts.get(term, 0)
+                if not frequency:
+                    continue
+                frequency_in_documents = self.document_frequency[term]
+                inverse_document_frequency = math.log(
+                    1.0
+                    + (document_count - frequency_in_documents + 0.5)
+                    / (frequency_in_documents + 0.5)
+                )
+                denominator = frequency + self.k1 * (
+                    1.0 - self.b + self.b * document_length / self.average_document_length
+                )
+                score += inverse_document_frequency * frequency * (self.k1 + 1.0) / denominator
+            scores[article_id] = score
+        return scores

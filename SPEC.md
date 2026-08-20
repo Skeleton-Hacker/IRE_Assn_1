@@ -89,11 +89,15 @@ memory scaling, PCA, and sampled t-SNE.
 ## Commands And Artifacts
 
 The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prepare`, `retrieve`,
-`evaluate`, `benchmark`, `plot`, `submit`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
+`evaluate`, `benchmark`, `plot`, `submit`, `submit-codabench`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
 exposes local verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the
 small smoke pipeline. `pixi run -e gpu reproduce-codabench` executes the large-dataset pipeline
-for submission preparation. `sbatch sbatch.sh` runs the large pipeline in a four-day Slurm
-allocation. Every stage remains independently runnable.
+for submission preparation. It downloads the unlabeled MINDlarge test and EB-NeRD testset
+bundles, writes competition feature stores below
+`data/processed/{dataset}/{variant}/competition_test`, scores only supplied in-view candidates,
+and prepares rank-permutation outputs. `pixi run -e gpu submit-codabench` writes validated text and
+ZIP submissions below `output/submissions`. `sbatch sbatch.sh` runs the large pipeline in a
+four-day Slurm allocation. Every stage remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.
@@ -138,5 +142,6 @@ Each retrieval merge request requires CI plus an HPC smoke bundle. Final complet
 systems on both final datasets, all offline metrics and slices, benchmark evidence, generated
 visualizations, two submissions per leaderboard, compact manifests, and reproducible commands.
 
-Codabench prediction serialization remains deferred until current competition templates are
-inspected. Full predictions remain ignored unless an explicit requirement demands otherwise.
+Competition submissions use one line per impression in the Codabench rank-permutation format and
+are validated to contain every supplied candidate position exactly once. Full retrieval outputs
+remain ignored unless an explicit requirement demands otherwise.

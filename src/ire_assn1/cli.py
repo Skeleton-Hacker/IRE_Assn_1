@@ -75,6 +75,16 @@ def submit(config: ConfigOption) -> None:
     submit_from_config(config)
 
 
+@app.command("submit-codabench")
+def submit_codabench(config: ConfigOption = Path("config/codabench.yaml")) -> None:
+    from ire_assn1.experiments.runner import _run_configs
+    from ire_assn1.experiments.submission import submit_from_config
+    from ire_assn1.settings import load_mapping
+
+    for run_config in _run_configs(load_mapping(config)):
+        submit_from_config(run_config)
+
+
 @app.command("bundle-run")
 def bundle_run(run_id: str) -> None:
     from ire_assn1.experiments.bundles import create_bundle

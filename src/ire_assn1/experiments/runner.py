@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from ire_assn1.data.download import download_from_config
-from ire_assn1.data.pipeline import prepare_from_config
+from ire_assn1.data.pipeline import prepare_competition_from_config, prepare_from_config
 from ire_assn1.evaluation.harness import evaluate_from_config
 from ire_assn1.experiments.benchmark import benchmark_from_config
 from ire_assn1.experiments.manifests import create_manifest, write_manifest
 from ire_assn1.experiments.stages import run_stage
 from ire_assn1.experiments.visualization import plot_from_config
 from ire_assn1.paths import project_path
-from ire_assn1.retrieval.runner import retrieve_from_config
+from ire_assn1.retrieval.runner import retrieve_competition_from_config, retrieve_from_config
 from ire_assn1.settings import load_mapping
 
 
@@ -57,6 +57,13 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
         inputs=(data_root / "raw",),
         outputs=(data_root / "processed",),
     )
+    run_stage(
+        manifest,
+        "prepare-competition",
+        lambda: prepare_competition_from_config(config),
+        inputs=(data_root / "raw", data_root / "processed"),
+        outputs=(data_root / "processed",),
+    )
     run_configs = _run_configs(mapping)
     for run_config in run_configs:
         name = str(run_config["name"])
@@ -70,6 +77,19 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
             inputs=(data_root / "processed" / name / variant,),
             outputs=(retrieval_output,),
         )
+        competition_input = data_root / "processed" / name / variant / "competition_test"
+        if competition_input.is_dir():
+            run_stage(
+                manifest,
+                f"retrieve-competition-{name}-{variant}-{system}",
+                lambda resolved=run_config: retrieve_competition_from_config(resolved),
+                inputs=(
+                    data_root / "processed" / name / variant,
+                    competition_input,
+                    retrieval_output / "selection.json",
+                ),
+                outputs=(retrieval_output / "competition_test",),
+            )
     for run_config in run_configs:
         name = str(run_config["name"])
         variant = str(run_config["variant"])
