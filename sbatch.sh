@@ -2,7 +2,6 @@
 #SBATCH -J "IRE_Assn_1"
 #SBATCH -c 10
 #SBATCH -G 1
-#SBATCH -w gnode090
 #SBATCH -o ./logs/train_%j.log
 #SBATCH -e ./logs/error_%j.log
 #SBATCH --time="4-00:00:00"
