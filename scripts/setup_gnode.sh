@@ -109,4 +109,5 @@ export HF_TOKEN
 cd "$REPO_ROOT"
 pixi install --locked -e gpu
 pixi run -e gpu doctor
+pixi run -e gpu python -c 'from ire_assn1.experiments.provenance import source_identity; source_identity()'
 printf 'Load HPC variables in the current shell with: set -a; . %s; set +a\n' "$ENV_FILE"
