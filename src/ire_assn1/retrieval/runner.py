@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+import os
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ from ire_assn1.retrieval.bge import BGEEncoder, DenseRetriever
 from ire_assn1.retrieval.bm25 import BM25Retriever
 from ire_assn1.retrieval.indexes import ExactFaissIndex, HNSWFaissIndex
 from ire_assn1.retrieval.pipeline import (
-    evaluate_history_lengths,
+    evaluate_history_lengths_stream,
     full_corpus_retrieval,
     impression_candidate_scoring,
 )
@@ -114,6 +115,14 @@ def _read_rows(path: Path) -> list[dict[str, object]]:
     return cast(list[dict[str, object]], pq.read_table(path).to_pylist())
 
 
+def _iter_rows(path: Path) -> Iterable[dict[str, object]]:
+    if not path.is_file():
+        raise FileNotFoundError(f"Normalized retrieval input does not exist: {path}")
+    parquet = pq.ParquetFile(path)
+    for batch in parquet.iter_batches(batch_size=8192):
+        yield from cast(list[dict[str, object]], pa.Table.from_batches([batch]).to_pylist())
+
+
 def _read_articles(path: Path) -> dict[str, Article]:
     articles: dict[str, Article] = {}
     for row in _read_rows(path):
@@ -141,20 +150,20 @@ def _read_histories(path: Path) -> dict[tuple[str, str], History]:
 
 
 def _read_impressions(path: Path) -> tuple[Impression, ...]:
-    impressions: list[Impression] = []
-    for row in _read_rows(path):
-        impressions.append(
-            Impression(
-                impression_id=str(row["impression_id"]),
-                user_id=str(row["user_id"]),
-                timestamp=_timestamp(row["timestamp"]),
-                candidate_ids=_strings(row.get("candidate_ids")),
-                clicked_ids=_strings(row.get("clicked_ids")),
-                labels=_integers(row.get("labels")),
-                source_split=str(row.get("source_split") or ""),
-            )
+    return tuple(_iter_impressions(path))
+
+
+def _iter_impressions(path: Path) -> Iterable[Impression]:
+    for row in _iter_rows(path):
+        yield Impression(
+            impression_id=str(row["impression_id"]),
+            user_id=str(row["user_id"]),
+            timestamp=_timestamp(row["timestamp"]),
+            candidate_ids=_strings(row.get("candidate_ids")),
+            clicked_ids=_strings(row.get("clicked_ids")),
+            labels=_integers(row.get("labels")),
+            source_split=str(row.get("source_split") or ""),
         )
-    return tuple(impressions)
 
 
 def _history_lengths(mapping: Mapping[str, object]) -> tuple[int | None, ...]:
@@ -277,8 +286,7 @@ def _result_rows(results: Sequence[RetrievalResult]) -> list[dict[str, object]]:
     return rows
 
 
-def _write_results(path: Path, results: Sequence[RetrievalResult]) -> int:
-    rows = _result_rows(results)
+def _write_results(path: Path, results: Iterable[RetrievalResult]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     schema = pa.schema(
         [
@@ -296,8 +304,27 @@ def _write_results(path: Path, results: Sequence[RetrievalResult]) -> int:
             ("used_fallback", pa.bool_()),
         ]
     )
-    pq.write_table(pa.Table.from_pylist(rows, schema=schema), path)
-    return len(rows)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    writer: pq.ParquetWriter | None = None
+    count = 0
+    try:
+        for result in results:
+            rows = _result_rows((result,))
+            if not rows:
+                continue
+            if writer is None:
+                writer = pq.ParquetWriter(temporary, schema, compression="zstd")
+            assert writer is not None
+            writer.write_table(pa.Table.from_pylist(rows, schema=schema))
+            count += len(rows)
+        if writer is None:
+            pq.write_table(pa.Table.from_pylist([], schema=schema), temporary)
+    finally:
+        if writer is not None:
+            writer.close()
+        if temporary.is_file():
+            os.replace(temporary, path)
+    return count
 
 
 def retrieve_from_config(config: str | Path | Mapping[str, object]) -> RetrievalRunSummary:
@@ -314,11 +341,15 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
     )
     articles = _read_articles(input_directory / "articles.parquet")
     histories = _read_histories(input_directory / "histories.parquet")
-    impressions = _read_impressions(input_directory / "impressions.parquet")
-    popularity = PopularityModel.from_impressions(impressions)
+    impressions_path = input_directory / "impressions.parquet"
+
+    def impressions() -> Iterable[Impression]:
+        return _iter_impressions(impressions_path)
+
+    popularity = PopularityModel.from_impressions(impressions())
     retriever = _create_retriever(mapping, articles, output_directory)
     candidates = _history_lengths(mapping)
-    selected, validation_scores = evaluate_history_lengths(
+    selected, validation_scores = evaluate_history_lengths_stream(
         impressions,
         histories,
         articles,
@@ -327,35 +358,42 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         candidates,
         k=100,
     )
-    evaluated = tuple(
-        impression for impression in impressions if impression.source_split != "train"
+    full_rows = _write_results(
+        output_directory / "full_corpus.parquet",
+        (
+            full_corpus_retrieval(
+                impression,
+                histories.get((impression.user_id, impression.source_split)),
+                articles,
+                retriever,
+                popularity,
+                selected,
+                200,
+            )
+            for impression in tqdm(
+                (value for value in impressions() if value.source_split != "train"),
+                desc=f"{system} full-corpus retrieval",
+                unit="impression",
+            )
+        ),
     )
-    full_results = tuple(
-        full_corpus_retrieval(
-            impression,
-            histories.get((impression.user_id, impression.source_split)),
-            articles,
-            retriever,
-            popularity,
-            selected,
-            200,
-        )
-        for impression in tqdm(evaluated, desc=f"{system} full-corpus retrieval", unit="impression")
-    )
-    candidate_results = tuple(
-        impression_candidate_scoring(
-            impression,
-            histories.get((impression.user_id, impression.source_split)),
-            articles,
-            retriever,
-            popularity,
-            selected,
-        )
-        for impression in tqdm(evaluated, desc=f"{system} candidate scoring", unit="impression")
-    )
-    full_rows = _write_results(output_directory / "full_corpus.parquet", full_results)
     candidate_rows = _write_results(
-        output_directory / "impression_candidates.parquet", candidate_results
+        output_directory / "impression_candidates.parquet",
+        (
+            impression_candidate_scoring(
+                impression,
+                histories.get((impression.user_id, impression.source_split)),
+                articles,
+                retriever,
+                popularity,
+                selected,
+            )
+            for impression in tqdm(
+                (value for value in impressions() if value.source_split != "train"),
+                desc=f"{system} candidate scoring",
+                unit="impression",
+            )
+        ),
     )
     serialized_scores = {
         "all" if key is None else str(key): value for key, value in validation_scores.items()

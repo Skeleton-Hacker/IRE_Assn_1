@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
 from tqdm.auto import tqdm
 
@@ -196,6 +196,41 @@ def evaluate_history_lengths(
         recalls: list[float] = []
         for impression in tqdm(
             validation,
+            desc=f"{retriever.system} validation history={history_length}",
+            unit="impression",
+        ):
+            relevant = set(impression.clicked_ids)
+            if not relevant:
+                continue
+            result = full_corpus_retrieval(
+                impression,
+                histories.get((impression.user_id, impression.source_split)),
+                articles,
+                retriever,
+                popularity,
+                history_length,
+                k,
+            )
+            retrieved = {article.article_id for article in result.articles}
+            recalls.append(len(relevant & retrieved) / len(relevant))
+        scores[history_length] = sum(recalls) / len(recalls) if recalls else 0.0
+    return select_history_length(scores, candidates), scores
+
+
+def evaluate_history_lengths_stream(
+    impressions: Callable[[], Iterable[Impression]],
+    histories: Mapping[tuple[str, str], History],
+    articles: Mapping[str, Article],
+    retriever: Retriever,
+    popularity: PopularityModel,
+    candidates: Sequence[int | None],
+    k: int = 100,
+) -> tuple[int | None, dict[int | None, float]]:
+    scores: dict[int | None, float] = {}
+    for history_length in candidates:
+        recalls: list[float] = []
+        for impression in tqdm(
+            (value for value in impressions() if value.source_split == "validation"),
             desc=f"{retriever.system} validation history={history_length}",
             unit="impression",
         ):
