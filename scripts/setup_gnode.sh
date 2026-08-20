@@ -34,6 +34,12 @@ PIXI_ROOT="${PIXI_ROOT:-$SCRATCH_ROOT/ire-assn1-pixi}"
 PIXI_ENV="$PIXI_ROOT/env"
 PIXI_CACHE="$PIXI_ROOT/cache"
 MODEL_ROOT="$PIXI_ROOT/models"
+DATA_ROOT="${DATA_ROOT:-$SCRATCH_ROOT/ire-assn1-data}"
+
+if [[ "$DATA_ROOT" != /* ]]; then
+  printf 'DATA_ROOT must be an absolute path: %s\n' "$DATA_ROOT" >&2
+  exit 1
+fi
 
 link_storage() {
   local link_path="$1"
@@ -59,8 +65,40 @@ link_storage() {
   printf '%s\n' "$target_path"
 }
 
+link_data_storage() {
+  local link_path="$1"
+  local target_path="$2"
+
+  if [[ -L "$link_path" ]]; then
+    local resolved_path
+    resolved_path="$(readlink -f "$link_path")"
+    if [[ -z "$resolved_path" || "$resolved_path" == "$REPO_ROOT"/* ]]; then
+      printf 'Existing data symlink resolves inside the repository: %s\n' "$link_path" >&2
+      exit 1
+    fi
+    mkdir -p "$resolved_path"
+    printf '%s\n' "$resolved_path"
+    return
+  fi
+
+  if [[ -e "$link_path" ]]; then
+    if [[ -e "$target_path" ]]; then
+      printf 'Cannot move data: scratch target already exists: %s\n' "$target_path" >&2
+      exit 1
+    fi
+    mkdir -p "$(dirname -- "$target_path")"
+    mv "$link_path" "$target_path"
+  else
+    mkdir -p "$target_path"
+  fi
+
+  ln -s "$target_path" "$link_path"
+  printf '%s\n' "$target_path"
+}
+
 PIXI_ENV="$(link_storage "$REPO_ROOT/.pixi" "$PIXI_ENV")"
 MODEL_ROOT="$(link_storage "$REPO_ROOT/models" "$MODEL_ROOT")"
+DATA_ROOT="$(link_data_storage "$REPO_ROOT/data" "$DATA_ROOT")"
 
 if [[ -L "$HOME/.cache" ]]; then
   CACHE_ROOT="$(readlink -f "$HOME/.cache")"

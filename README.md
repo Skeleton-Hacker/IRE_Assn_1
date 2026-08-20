@@ -55,8 +55,10 @@ sbatch sbatch.sh
 ```
 
 The batch script runs the per-node cache symlink setup, initializes the GPU environment, sources
-the private `.env`, and runs the large Codabench configuration. Set `IRE_CONFIG=config/base.yaml`
-before submission only when a small smoke run is intended.
+the private `.env`, and runs the large Codabench configuration. Setup moves `data` to
+`$DATA_ROOT` and links it back into the repository; `DATA_ROOT` defaults to
+`$SCRATCH_ROOT/ire-assn1-data`. Set `IRE_CONFIG=config/base.yaml` before submission only when a
+small smoke run is intended.
 
 Downloads, archive extraction, embedding, indexing, validation, and retrieval display `tqdm`
 progress where work is measurable. Cached stages can complete without showing work for that stage.
