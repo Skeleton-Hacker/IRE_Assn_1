@@ -124,7 +124,8 @@ The tracked `scripts/setup_gnode.sh` command is the HPC environment setup entry 
 ignored `.env`, requires `SCRATCH_ROOT` and `HF_TOKEN`, keeps datasets under `data`, links `.pixi`
 and `models` to persistent scratch, moves `data` to persistent scratch and links it back into the
 repository, reuses a pre-existing scratch symlink for either path, uses a pre-existing `~/.cache`
-scratch symlink for Pixi’s package cache, installs the locked GPU environment,
+scratch symlink for Pixi’s package cache, merges an rsynced repository directory into an existing
+scratch target, installs the locked GPU environment,
 and runs `doctor`. Because it runs as a child process, callers source `.env` separately before
 starting subsequent commands that need `HF_TOKEN`.
 

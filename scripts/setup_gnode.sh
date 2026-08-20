@@ -45,6 +45,11 @@ link_storage() {
   local link_path="$1"
   local target_path="$2"
 
+  if [[ "$target_path" == "$REPO_ROOT" || "$target_path" == "$REPO_ROOT"/* ]]; then
+    printf 'Storage target must not be inside the repository: %s\n' "$target_path" >&2
+    exit 1
+  fi
+
   if [[ -L "$link_path" ]]; then
     local resolved_path
     resolved_path="$(readlink -f "$link_path")"
@@ -58,36 +63,21 @@ link_storage() {
   fi
 
   if [[ -e "$link_path" ]]; then
-    mv "$link_path" "${link_path}.incomplete-$(date +%Y%m%d-%H%M%S)"
-  fi
-  mkdir -p "$target_path"
-  ln -s "$target_path" "$link_path"
-  printf '%s\n' "$target_path"
-}
-
-link_data_storage() {
-  local link_path="$1"
-  local target_path="$2"
-
-  if [[ -L "$link_path" ]]; then
-    local resolved_path
-    resolved_path="$(readlink -f "$link_path")"
-    if [[ -z "$resolved_path" || "$resolved_path" == "$REPO_ROOT"/* ]]; then
-      printf 'Existing data symlink resolves inside the repository: %s\n' "$link_path" >&2
-      exit 1
-    fi
-    mkdir -p "$resolved_path"
-    printf '%s\n' "$resolved_path"
-    return
-  fi
-
-  if [[ -e "$link_path" ]]; then
     if [[ -e "$target_path" ]]; then
-      printf 'Cannot move data: scratch target already exists: %s\n' "$target_path" >&2
-      exit 1
+      if [[ ! -d "$link_path" || ! -d "$target_path" ]]; then
+        printf 'Cannot merge storage paths: %s and %s\n' "$link_path" "$target_path" >&2
+        exit 1
+      fi
+      if ! command -v rsync >/dev/null 2>&1; then
+        printf 'rsync is required to merge existing storage paths.\n' >&2
+        exit 1
+      fi
+      rsync -a --ignore-existing "$link_path/" "$target_path/"
+      rm -rf "$link_path"
+    else
+      mkdir -p "$(dirname -- "$target_path")"
+      mv "$link_path" "$target_path"
     fi
-    mkdir -p "$(dirname -- "$target_path")"
-    mv "$link_path" "$target_path"
   else
     mkdir -p "$target_path"
   fi
@@ -98,7 +88,7 @@ link_data_storage() {
 
 PIXI_ENV="$(link_storage "$REPO_ROOT/.pixi" "$PIXI_ENV")"
 MODEL_ROOT="$(link_storage "$REPO_ROOT/models" "$MODEL_ROOT")"
-DATA_ROOT="$(link_data_storage "$REPO_ROOT/data" "$DATA_ROOT")"
+DATA_ROOT="$(link_storage "$REPO_ROOT/data" "$DATA_ROOT")"
 
 if [[ -L "$HOME/.cache" ]]; then
   CACHE_ROOT="$(readlink -f "$HOME/.cache")"
