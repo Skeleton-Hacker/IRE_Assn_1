@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import sqlite3
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +29,7 @@ from ire_assn1.data.models import (
     normalize_timestamp,
 )
 from ire_assn1.data.splits import TemporalSplit, official_temporal_split
+from ire_assn1.data.store import write_feature_store_chunks
 
 ARTICLE_COLUMNS = {
     "article_id": ("article_id",),
@@ -360,3 +366,241 @@ def prepare_ebnerd(
             validation_start=temporal_split.validation_start,
         ),
     )
+
+
+def _parquet_batches(path: Path, batch_size: int = 8192) -> Iterable[pa.Table]:
+    parquet = pq.ParquetFile(path)
+    for batch in parquet.iter_batches(batch_size=batch_size):
+        yield pa.Table.from_batches([batch], schema=parquet.schema_arrow)
+
+
+def _parquet_columns(path: Path, aliases: Mapping[str, Sequence[str]]) -> dict[str, str]:
+    available = set(pq.read_schema(path).names)
+    resolved: dict[str, str] = {}
+    for normalized, candidates in aliases.items():
+        match = next((candidate for candidate in candidates if candidate in available), None)
+        if match is None:
+            names = ", ".join(candidates)
+            raise ValueError(f"Missing required EB-NeRD column, expected one of: {names}")
+        resolved[normalized] = match
+    return resolved
+
+
+def _parquet_timestamps(path: Path) -> Iterable[datetime]:
+    column = _parquet_columns(path, {"timestamp": BEHAVIOR_COLUMNS["timestamp"]})["timestamp"]
+    for table in _parquet_batches(path):
+        yield from (_datetime(value, "timestamp") for value in table.column(column).to_pylist())
+
+
+def _chunks[T](rows: Iterable[T], size: int = 8192) -> Iterable[list[T]]:
+    chunk: list[T] = []
+    for row in rows:
+        chunk.append(row)
+        if len(chunk) == size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+
+def _concat[T](iterables: Iterable[Iterable[list[T]]]) -> Iterable[list[T]]:
+    for rows in iterables:
+        yield from rows
+
+
+def _stream_ebnerd_articles(
+    path: Path,
+    identity: DatasetIdentity,
+    temporal_split: TemporalSplit,
+    test_start: datetime,
+    connection: sqlite3.Connection,
+    stats: dict[str, int],
+) -> Iterable[list[dict[str, Any]]]:
+    connection.execute(
+        "CREATE TABLE articles ("
+        "article_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, payload TEXT NOT NULL)"
+    )
+    for table in _parquet_batches(path):
+        rows, duplicates, conflicts = _normalize_articles(
+            table, identity, temporal_split, test_start
+        )
+        stats["article_duplicates"] += duplicates
+        stats["article_conflicts"] += conflicts
+        for row in rows:
+            payload = json.dumps(
+                row,
+                default=lambda value: value.isoformat() if isinstance(value, datetime) else value,
+                sort_keys=True,
+            )
+            fingerprint = hashlib.sha256(payload.encode()).hexdigest()
+            existing = connection.execute(
+                "SELECT fingerprint FROM articles WHERE article_id = ?", (row["article_id"],)
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    "INSERT INTO articles(article_id, fingerprint, payload) VALUES (?, ?, ?)",
+                    (row["article_id"], fingerprint, payload),
+                )
+            else:
+                stats["article_duplicates"] += 1
+                stats["article_conflicts"] += int(existing[0] != fingerprint)
+        connection.commit()
+    rows: list[dict[str, Any]] = []
+    for (payload,) in connection.execute("SELECT payload FROM articles ORDER BY rowid"):
+        row = json.loads(payload)
+        row["published_at"] = datetime.fromisoformat(row["published_at"])
+        row["available_at"] = datetime.fromisoformat(row["available_at"])
+        rows.append(row)
+        if len(rows) == 8192:
+            yield rows
+            rows = []
+    if rows:
+        yield rows
+
+
+def _stream_ebnerd_behaviors(
+    path: Path,
+    identity: DatasetIdentity,
+    split_rule: SourceSplit | TemporalSplit,
+    users: dict[SourceSplit, set[str]],
+    kind: str,
+) -> Iterable[list[dict[str, Any]]]:
+    for table in _parquet_batches(path):
+        impressions, candidates, batch_users = _normalize_behavior_table(
+            table, identity, split_rule
+        )
+        for source_split, raw_users in batch_users.items():
+            users[source_split].update(raw_users)
+        rows = impressions if kind == "impressions" else candidates
+        yield from _chunks(rows)
+
+
+def _stream_ebnerd_histories(
+    path: Path,
+    identity: DatasetIdentity,
+    source_splits: Sequence[SourceSplit],
+    users: Mapping[SourceSplit, set[str]],
+) -> Iterable[list[dict[str, Any]]]:
+    seen: dict[SourceSplit, set[str]] = {source_split: set() for source_split in source_splits}
+    for table in _parquet_batches(path):
+        histories = _read_histories(table)
+        rows: list[dict[str, Any]] = []
+        for raw_user_id, (article_ids, timestamps) in histories.items():
+            for source_split in source_splits:
+                if raw_user_id not in users[source_split]:
+                    continue
+                if raw_user_id in seen[source_split]:
+                    continue
+                seen[source_split].add(raw_user_id)
+                rows.append(
+                    {
+                        "user_id": identity.user_id(raw_user_id),
+                        "article_ids": [identity.article_id(value) for value in article_ids],
+                        "timestamps": list(timestamps),
+                        "source_split": source_split,
+                    }
+                )
+        yield from _chunks(rows)
+    for source_split in source_splits:
+        rows = [
+            {
+                "user_id": identity.user_id(raw_user_id),
+                "article_ids": [],
+                "timestamps": [],
+                "source_split": source_split,
+            }
+            for raw_user_id in sorted(users[source_split] - seen[source_split])
+        ]
+        yield from _chunks(rows)
+
+
+def prepare_ebnerd_streaming(
+    extracted_root: Path,
+    variant: str,
+    validation_days: int,
+    data_root: Path,
+) -> PreparationResult:
+    identity = DatasetIdentity(name="ebnerd", variant=variant)
+    (
+        article_path,
+        train_behavior_path,
+        train_history_path,
+        test_behavior_path,
+        test_history_path,
+    ) = _discover_files(extracted_root)
+    train_timestamps = _parquet_timestamps(train_behavior_path)
+    test_start = min(_parquet_timestamps(test_behavior_path), default=None)
+    if test_start is None:
+        raise ValueError("Official EB-NeRD validation package is empty")
+    temporal_split = official_temporal_split(train_timestamps, validation_days)
+    paths: tuple[tuple[Path, SourceSplit | TemporalSplit], ...] = (
+        (train_behavior_path, temporal_split),
+        (test_behavior_path, "test"),
+    )
+    history_sources: tuple[tuple[Path, tuple[SourceSplit, ...]], ...] = (
+        (train_history_path, ("train", "validation")),
+        (test_history_path, ("test",)),
+    )
+    users: dict[SourceSplit, set[str]] = {"train": set(), "validation": set(), "test": set()}
+    stats = {"article_duplicates": 0, "article_conflicts": 0}
+    data_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix="ebnerd-prepare-", suffix=".sqlite", dir=data_root, delete=False
+    ) as temporary:
+        database_path = Path(temporary.name)
+    connection = sqlite3.connect(database_path)
+    try:
+        result = write_feature_store_chunks(
+            identity,
+            PreparationStats(
+                article_conflicts=0,
+                article_duplicates=0,
+                validation_start=temporal_split.validation_start,
+            ),
+            {
+                "articles": _stream_ebnerd_articles(
+                    article_path,
+                    identity,
+                    temporal_split,
+                    test_start,
+                    connection,
+                    stats,
+                ),
+                "impressions": _concat(
+                    (
+                        _stream_ebnerd_behaviors(path, identity, split_rule, users, "impressions")
+                        for path, split_rule in paths
+                    )
+                ),
+                "candidates": _concat(
+                    (
+                        _stream_ebnerd_behaviors(path, identity, split_rule, users, "candidates")
+                        for path, split_rule in paths
+                    )
+                ),
+                "histories": _concat(
+                    (
+                        _stream_ebnerd_histories(
+                            path,
+                            identity,
+                            source_splits,
+                            users,
+                        )
+                        for path, source_splits in history_sources
+                    )
+                ),
+            },
+            data_root,
+        )
+    finally:
+        connection.close()
+        database_path.unlink(missing_ok=True)
+    result = replace(
+        result,
+        stats=PreparationStats(
+            article_conflicts=stats["article_conflicts"],
+            article_duplicates=stats["article_duplicates"],
+            validation_start=temporal_split.validation_start,
+        ),
+    )
+    return result

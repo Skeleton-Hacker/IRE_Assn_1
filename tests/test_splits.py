@@ -9,8 +9,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ire_assn1.data.ebnerd import prepare_ebnerd
-from ire_assn1.data.mind import prepare_mind
+from ire_assn1.data.ebnerd import prepare_ebnerd, prepare_ebnerd_streaming
+from ire_assn1.data.mind import prepare_mind, prepare_mind_streaming
 from ire_assn1.data.pipeline import prepare_from_config
 from ire_assn1.data.splits import official_temporal_split
 
@@ -41,6 +41,7 @@ def test_mind_ingestion_builds_official_splits_and_first_seen_availability() -> 
     assert result.stats.validation_start == datetime(2019, 11, 14)
     assert result.stats.article_duplicates == 1
     assert result.stats.article_conflicts == 0
+    assert result.tables is not None
     impressions = result.tables.impressions.to_pylist()
     assert [row["source_split"] for row in impressions] == [
         "train",
@@ -58,6 +59,32 @@ def test_mind_ingestion_builds_official_splits_and_first_seen_availability() -> 
     histories = result.tables.histories.to_pylist()
     assert {row["source_split"] for row in histories} == {"train", "validation", "test"}
     assert all(timestamp is None for row in histories for timestamp in row["timestamps"])
+
+
+def test_large_mind_ingestion_streams_feature_store_rows(tmp_path: Path) -> None:
+    raw_root = tmp_path / "raw" / "mind" / "large"
+    shutil.copytree(FIXTURES / "mind" / "train", raw_root / "train")
+    shutil.copytree(FIXTURES / "mind" / "official_validation", raw_root / "official_validation")
+
+    result = prepare_mind_streaming(
+        raw_root / "train",
+        raw_root / "official_validation",
+        variant="large",
+        validation_days=1,
+        data_root=tmp_path / "data",
+    )
+
+    assert result.tables is None
+    assert result.row_counts == {
+        "articles": 4,
+        "candidates": 8,
+        "histories": 4,
+        "impressions": 4,
+    }
+    assert result.output_dir is not None
+    manifest = json.loads((result.output_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["rows"] == result.row_counts
+    assert pq.read_table(result.output_dir / "impressions.parquet").num_rows == 4
 
 
 def _write_ebnerd_fixture(root: Path) -> None:
@@ -150,6 +177,7 @@ def test_ebnerd_ingestion_maps_official_parquet_columns(tmp_path: Path) -> None:
     _write_ebnerd_fixture(tmp_path)
     result = prepare_ebnerd(tmp_path, variant="demo")
     assert result.stats.validation_start == datetime(2023, 6, 2)
+    assert result.tables is not None
     impressions = result.tables.impressions.to_pylist()
     assert [row["source_split"] for row in impressions] == [
         "train",
@@ -167,6 +195,27 @@ def test_ebnerd_ingestion_maps_official_parquet_columns(tmp_path: Path) -> None:
         ("ebnerd:demo:user:2", "validation"),
         ("ebnerd:demo:user:1", "test"),
     }
+
+
+def test_large_ebnerd_ingestion_streams_feature_store_rows(tmp_path: Path) -> None:
+    _write_ebnerd_fixture(tmp_path)
+
+    result = prepare_ebnerd_streaming(
+        tmp_path,
+        variant="large",
+        validation_days=1,
+        data_root=tmp_path / "data",
+    )
+
+    assert result.tables is None
+    assert result.row_counts == {
+        "articles": 4,
+        "candidates": 6,
+        "histories": 3,
+        "impressions": 3,
+    }
+    assert result.output_dir is not None
+    assert pq.read_table(result.output_dir / "articles.parquet").num_rows == 4
 
 
 def test_config_driven_preparation_writes_feature_store(tmp_path: Path) -> None:

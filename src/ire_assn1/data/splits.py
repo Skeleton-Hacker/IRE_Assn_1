@@ -22,8 +22,7 @@ def official_temporal_split(
 ) -> TemporalSplit:
     if validation_days < 1:
         raise ValueError("validation_days must be positive")
-    normalized = tuple(normalize_timestamp(value) for value in training_timestamps)
-    unique_dates = sorted({value.date() for value in normalized})
+    unique_dates = sorted({normalize_timestamp(value).date() for value in training_timestamps})
     if len(unique_dates) <= validation_days:
         raise ValueError("Training data must contain an earlier day and all validation days")
     validation_dates = tuple(unique_dates[-validation_days:])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -50,9 +51,10 @@ class PreparationStats:
 @dataclass(frozen=True, slots=True)
 class PreparationResult:
     identity: DatasetIdentity
-    tables: DatasetTables
+    tables: DatasetTables | None
     stats: PreparationStats
     output_dir: Path | None = None
+    row_counts: Mapping[str, int] = field(default_factory=dict)
 
 
 def normalize_timestamp(value: datetime) -> datetime:
