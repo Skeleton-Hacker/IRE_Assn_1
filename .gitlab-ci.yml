@@ -6,6 +6,9 @@ stages:
 
 verify:
   stage: verify
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends git
   script:
     - pixi run check
     - pixi run eval-synthetic
