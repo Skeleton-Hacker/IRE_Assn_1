@@ -62,13 +62,16 @@ small smoke run is intended.
 
 Downloads, archive extraction, embedding, indexing, validation, and retrieval display `tqdm`
 progress where work is measurable. Cached stages can complete without showing work for that stage.
-The large Codabench configuration limits offline diagnostics to 100,000 impressions to avoid
-multi-billion-row full-corpus outputs; competition candidate scoring remains complete.
+The large Codabench configuration limits offline diagnostics and history selection to 10,000
+impressions to bound runtime and output size; competition candidate scoring remains complete.
+The benchmark uses the first 1,000 test impressions in feature-store order for its 25%, 50%, and
+100% workloads before the configured 10x extrapolation.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean
 source manifest and produce versioned manifests. Use `--allow-dirty` only for non-reportable
-debugging runs.
+debugging runs. An interrupted run can resume after transferring the same source tree with:
+`pixi run -e gpu ire-assn1 -- reproduce --config config/codabench.yaml --resume RUN_ID`.
 
 ## Artifact Layout
 

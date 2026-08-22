@@ -103,7 +103,8 @@ def validate_run(path: Path) -> None:
 def reproduce(
     config: ConfigOption = Path("config/base.yaml"),
     allow_dirty: bool = typer.Option(False),
+    resume: str | None = typer.Option(None, "--resume"),
 ) -> None:
     from ire_assn1.experiments.runner import reproduce_from_config
 
-    reproduce_from_config(config, allow_dirty=allow_dirty)
+    reproduce_from_config(config, allow_dirty=allow_dirty, resume_id=resume)

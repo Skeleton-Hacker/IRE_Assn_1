@@ -38,5 +38,9 @@ set +a
 
 export PYTHONUNBUFFERED=1
 CONFIG="${IRE_CONFIG:-config/codabench.yaml}"
+RESUME_ARGS=()
+if [[ -n "${IRE_RESUME:-}" ]]; then
+  RESUME_ARGS=(--resume "$IRE_RESUME")
+fi
 
-exec pixi run -e gpu ire-assn1 -- reproduce --config "$CONFIG"
+exec pixi run -e gpu ire-assn1 -- reproduce --config "$CONFIG" "${RESUME_ARGS[@]}"

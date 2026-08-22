@@ -60,8 +60,8 @@ representations use training-only popularity followed by article ID as a determi
 
 Full-corpus candidate generation reports Recall@50, Recall@100, and Recall@200. Impression
 ranking scores only supplied candidates and preserves no future information. The large Codabench
-configuration uses a deterministic 100,000-impression offline diagnostic cap; competition
-candidate scoring remains complete.
+configuration uses deterministic 10,000-impression offline diagnostics and history selection;
+competition candidate scoring remains complete.
 
 ## Evaluation
 
@@ -82,9 +82,10 @@ excluded from submissions.
 
 ## Benchmarking And Visualizations
 
-Benchmarks use deterministic 25, 50, and 100 percent impression workloads. Each records wall
-time, throughput, peak RSS, peak CUDA memory, and index size. Exact and HNSW semantic search
-are compared. Ten-times-scale analysis extrapolates measured trends and states assumptions.
+Benchmarks use deterministic 25, 50, and 100 percent workloads over the first 1,000 test
+impressions in feature-store order. Each records wall time, throughput, peak RSS, peak CUDA
+memory, and index size. Exact and HNSW semantic search are compared. Ten-times-scale analysis
+extrapolates measured trends and states assumptions.
 
 Generated visualizations include Recall@K, sliced metrics with confidence intervals, runtime and
 memory scaling, PCA, and sampled t-SNE.
@@ -110,7 +111,8 @@ Official runs require a clean Git tree or a verified source manifest generated f
 manifests include Git revision and status, provenance source kind, source tree hash, resolved
 configuration and hash, Pixi lock hash, input and output checksums, dataset variant, model revision,
 seeds, device information, timings, memory, and stage states. Cached stages are reusable only when
-their code, configuration, and input identities match.
+their code, configuration, input identities, and recorded outputs match. `reproduce --resume RUN_ID`
+reuses only such verified completed stages.
 
 The `source-manifest` command writes the ignored `.ire-source.json` transfer artifact from a clean
 Git checkout. It records the source revision and hashes of the code, configuration, specification,

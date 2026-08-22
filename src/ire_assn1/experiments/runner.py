@@ -8,7 +8,11 @@ from ire_assn1.data.download import download_from_config
 from ire_assn1.data.pipeline import prepare_competition_from_config, prepare_from_config
 from ire_assn1.evaluation.harness import evaluate_from_config
 from ire_assn1.experiments.benchmark import benchmark_from_config
-from ire_assn1.experiments.manifests import create_manifest, write_manifest
+from ire_assn1.experiments.manifests import (
+    create_manifest,
+    load_manifest,
+    write_manifest,
+)
 from ire_assn1.experiments.stages import run_stage
 from ire_assn1.experiments.visualization import plot_from_config
 from ire_assn1.paths import project_path
@@ -38,9 +42,35 @@ def _run_configs(mapping: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     )
 
 
-def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
+def _manifest_for_run(
+    config: Path,
+    mapping: dict[str, Any],
+    allow_dirty: bool,
+    resume_id: str | None,
+):
+    current = create_manifest("assignment", "final", "all", mapping, allow_dirty=allow_dirty)
+    if resume_id is None:
+        return current
+    previous_path = project_path("logs") / resume_id / "manifest.json"
+    previous = load_manifest(previous_path)
+    if previous.git_sha != current.git_sha:
+        raise RuntimeError("Resume manifest source revision does not match the current source")
+    if previous.source_tree_sha256 != current.source_tree_sha256:
+        raise RuntimeError("Resume manifest source tree does not match the current source")
+    if previous.config_sha256 != current.config_sha256:
+        raise RuntimeError("Resume manifest configuration does not match the current config")
+    if previous.lock_sha256 != current.lock_sha256:
+        raise RuntimeError("Resume manifest Pixi lock does not match the current lock")
+    return previous
+
+
+def reproduce_from_config(
+    config: Path,
+    allow_dirty: bool = False,
+    resume_id: str | None = None,
+) -> None:
     mapping = load_mapping(config)
-    manifest = create_manifest("assignment", "final", "all", mapping, allow_dirty=allow_dirty)
+    manifest = _manifest_for_run(config, mapping, allow_dirty, resume_id)
     write_manifest(manifest)
     data_root = project_path("data")
     run_stage(
@@ -49,6 +79,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
         lambda: download_from_config(config),
         inputs=(config,),
         outputs=(data_root / "raw",),
+        resume=resume_id is not None,
     )
     run_stage(
         manifest,
@@ -56,6 +87,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
         lambda: prepare_from_config(config),
         inputs=(data_root / "raw",),
         outputs=(data_root / "processed",),
+        resume=resume_id is not None,
     )
     run_stage(
         manifest,
@@ -63,6 +95,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
         lambda: prepare_competition_from_config(config),
         inputs=(data_root / "raw", data_root / "processed"),
         outputs=(data_root / "processed",),
+        resume=resume_id is not None,
     )
     run_configs = _run_configs(mapping)
     for run_config in run_configs:
@@ -76,6 +109,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
             lambda resolved=run_config: retrieve_from_config(resolved),
             inputs=(data_root / "processed" / name / variant,),
             outputs=(retrieval_output,),
+            resume=resume_id is not None,
         )
         competition_input = data_root / "processed" / name / variant / "competition_test"
         if competition_input.is_dir():
@@ -89,6 +123,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
                     retrieval_output / "selection.json",
                 ),
                 outputs=(retrieval_output / "competition_test",),
+                resume=resume_id is not None,
             )
     for run_config in run_configs:
         name = str(run_config["name"])
@@ -104,6 +139,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
                 data_root / "retrieval" / name / variant / system,
             ),
             outputs=(output,),
+            resume=resume_id is not None,
         )
         run_stage(
             manifest,
@@ -114,6 +150,7 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
                 data_root / "retrieval" / name / variant / system,
             ),
             outputs=(output / "benchmark.json",),
+            resume=resume_id is not None,
         )
         plot_output = project_path("plots") / name / variant / system
         run_stage(
@@ -122,5 +159,6 @@ def reproduce_from_config(config: Path, allow_dirty: bool = False) -> None:
             lambda resolved=run_config: plot_from_config(resolved),
             inputs=(output,),
             outputs=(plot_output,),
+            resume=resume_id is not None,
         )
     write_manifest(manifest)
