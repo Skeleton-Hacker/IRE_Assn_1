@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from ire_assn1.retrieval.indexes import ExactFaissIndex, FaissIndex, normalize_vectors
-from ire_assn1.retrieval.types import Article, SearchHit
+from ire_assn1.retrieval.types import Article, EligibleArticle, SearchHit
 
 
 class _SentenceTransformerModel(Protocol):
@@ -131,18 +131,17 @@ class DenseRetriever:
     def retrieve(
         self,
         profile_article_ids: Sequence[str],
-        eligible_ids: Collection[str],
+        eligible_ids: EligibleArticle,
         k: int,
     ) -> tuple[SearchHit, ...]:
         query = self.profile_vector(profile_article_ids)
         if query is None or k <= 0:
             return ()
-        eligible = set(eligible_ids)
         requested = min(len(self.article_ids), max(k, 1))
         hits: tuple[SearchHit, ...] = ()
         while requested:
             hits = tuple(
-                hit for hit in self.index.search(query, requested) if hit.article_id in eligible
+                hit for hit in self.index.search(query, requested) if hit.article_id in eligible_ids
             )
             if len(hits) >= k or requested == len(self.article_ids):
                 break

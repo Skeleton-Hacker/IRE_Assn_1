@@ -62,6 +62,8 @@ small smoke run is intended.
 
 Downloads, archive extraction, embedding, indexing, validation, and retrieval display `tqdm`
 progress where work is measurable. Cached stages can complete without showing work for that stage.
+The large Codabench configuration limits offline diagnostics to 100,000 impressions to avoid
+multi-billion-row full-corpus outputs; competition candidate scoring remains complete.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean

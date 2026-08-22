@@ -31,7 +31,8 @@ Articles contain `article_id`, `title`, `abstract`, nullable `body`, nullable `c
 `subcategory`, `entities`, nullable `published_at`, `available_at`, and `source_split`.
 
 Histories contain `user_id`, ordered `article_ids`, ordered nullable `timestamps`, and
-`source_split`.
+`source_split`. MIND histories additionally carry `impression_id` because MIND supplies a
+pre-impression history on each behavior row; EB-NeRD user/split histories leave it null.
 
 Impressions contain `impression_id`, `user_id`, nullable `session_id`, `timestamp`, ordered
 `candidate_ids`, ordered `clicked_ids`, ordered labels, and `source_split`.
@@ -58,7 +59,9 @@ all using validation Recall@100. Primary systems use history only. Empty histori
 representations use training-only popularity followed by article ID as a deterministic tie-break.
 
 Full-corpus candidate generation reports Recall@50, Recall@100, and Recall@200. Impression
-ranking scores only supplied candidates and preserves no future information.
+ranking scores only supplied candidates and preserves no future information. The large Codabench
+configuration uses a deterministic 100,000-impression offline diagnostic cap; competition
+candidate scoring remains complete.
 
 ## Evaluation
 

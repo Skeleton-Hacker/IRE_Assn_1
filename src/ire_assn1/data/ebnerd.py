@@ -279,6 +279,7 @@ def _normalize_histories(
                     "article_ids": [identity.article_id(value) for value in article_ids],
                     "timestamps": list(timestamps),
                     "source_split": source_split,
+                    "impression_id": None,
                 }
             )
     return rows
@@ -503,6 +504,7 @@ def _stream_ebnerd_histories(
                         "article_ids": [identity.article_id(value) for value in article_ids],
                         "timestamps": list(timestamps),
                         "source_split": source_split,
+                        "impression_id": None,
                     }
                 )
         yield from _chunks(rows)
@@ -513,6 +515,7 @@ def _stream_ebnerd_histories(
                 "article_ids": [],
                 "timestamps": [],
                 "source_split": source_split,
+                "impression_id": None,
             }
             for raw_user_id in sorted(users[source_split] - seen[source_split])
         ]

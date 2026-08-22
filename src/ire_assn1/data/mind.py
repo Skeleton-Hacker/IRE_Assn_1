@@ -215,7 +215,7 @@ def _normalize_behaviors(
     identity: DatasetIdentity,
     packages: Iterable[tuple[Sequence[MindBehavior], SourceSplit | TemporalSplit]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    histories: dict[tuple[str, SourceSplit], tuple[datetime, tuple[str, ...]]] = {}
+    history_rows: list[dict[str, Any]] = []
     impressions: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
     for behaviors, split_rule in packages:
@@ -230,10 +230,15 @@ def _normalize_behaviors(
             candidate_ids = [identity.article_id(value) for value in behavior.candidate_ids]
             clicked_ids = [identity.article_id(value) for value in behavior.clicked_ids]
             history_ids = tuple(identity.article_id(value) for value in behavior.history)
-            history_key = (user_id, source_split)
-            existing = histories.get(history_key)
-            if existing is None or behavior.timestamp < existing[0]:
-                histories[history_key] = (behavior.timestamp, history_ids)
+            history_rows.append(
+                {
+                    "user_id": user_id,
+                    "article_ids": list(history_ids),
+                    "timestamps": [None] * len(history_ids),
+                    "source_split": source_split,
+                    "impression_id": impression_id,
+                }
+            )
             impressions.append(
                 {
                     "impression_id": impression_id,
@@ -260,15 +265,6 @@ def _normalize_behaviors(
                         "source_split": source_split,
                     }
                 )
-    history_rows = [
-        {
-            "user_id": user_id,
-            "article_ids": list(article_ids),
-            "timestamps": [None] * len(article_ids),
-            "source_split": source_split,
-        }
-        for (user_id, source_split), (_, article_ids) in sorted(histories.items())
-    ]
     return history_rows, impressions, candidates
 
 
@@ -423,14 +419,13 @@ def _mind_impression_rows(
                 source_split = _mind_split(behavior, split_rule)
                 connection.execute(
                     """
-                    INSERT INTO histories(user_id, source_split, timestamp, article_ids)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(user_id, source_split) DO UPDATE SET
-                        timestamp = excluded.timestamp,
-                        article_ids = excluded.article_ids
-                    WHERE excluded.timestamp < histories.timestamp
+                    INSERT INTO histories(
+                        impression_id, user_id, source_split, timestamp, article_ids
+                    )
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
+                        behavior.impression_id,
                         behavior.user_id,
                         source_split,
                         behavior.timestamp.isoformat(timespec="microseconds"),
@@ -482,16 +477,17 @@ def _mind_history_rows(
 ) -> Iterable[list[dict[str, object]]]:
     def rows() -> Iterable[dict[str, object]]:
         cursor = connection.execute(
-            "SELECT user_id, source_split, timestamp, article_ids "
-            "FROM histories ORDER BY source_split, user_id"
+            "SELECT impression_id, user_id, source_split, timestamp, article_ids "
+            "FROM histories ORDER BY source_split, impression_id"
         )
-        for user_id, source_split, _, article_ids in cursor:
+        for impression_id, user_id, source_split, _, article_ids in cursor:
             values = json.loads(article_ids)
             yield {
                 "user_id": identity.user_id(user_id),
                 "article_ids": [identity.article_id(value) for value in values],
                 "timestamps": [None] * len(values),
                 "source_split": source_split,
+                "impression_id": identity.impression_id(impression_id),
             }
 
     return _chunks(rows())
@@ -559,8 +555,9 @@ def prepare_mind_streaming(
     try:
         connection.execute(
             "CREATE TABLE histories ("
-            "user_id TEXT NOT NULL, source_split TEXT NOT NULL, timestamp TEXT NOT NULL, "
-            "article_ids TEXT NOT NULL, PRIMARY KEY (user_id, source_split))"
+            "impression_id TEXT NOT NULL, user_id TEXT NOT NULL, "
+            "source_split TEXT NOT NULL, timestamp TEXT NOT NULL, article_ids TEXT NOT NULL, "
+            "PRIMARY KEY (impression_id, source_split))"
         )
         result = write_feature_store_chunks(
             identity,

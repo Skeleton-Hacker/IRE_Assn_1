@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +21,7 @@ from ire_assn1.retrieval.indexes import ExactFaissIndex, HNSWFaissIndex
 from ire_assn1.retrieval.pipeline import (
     evaluate_history_lengths_stream,
     full_corpus_retrieval,
+    history_for_impression,
     impression_candidate_scoring,
 )
 from ire_assn1.retrieval.profiles import PopularityModel
@@ -145,7 +146,8 @@ def _read_histories(path: Path) -> dict[tuple[str, str], History]:
             article_ids=_strings(row.get("article_ids")),
             timestamps=_timestamps(row.get("timestamps")),
         )
-        histories[(history.user_id, source_split)] = history
+        key = str(row["impression_id"]) if row.get("impression_id") else history.user_id
+        histories[(key, source_split)] = history
     return histories
 
 
@@ -178,6 +180,28 @@ def _history_lengths(mapping: Mapping[str, object]) -> tuple[int | None, ...]:
     if not lengths:
         raise ValueError("At least one history length is required")
     return tuple(lengths)
+
+
+def _positive_limit(mapping: Mapping[str, object], key: str) -> int | None:
+    value = mapping.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{key} must be a positive integer when provided")
+    return value
+
+
+def _offline_impressions(
+    impressions: Callable[[], Iterable[Impression]], limit: int | None
+) -> Iterable[Impression]:
+    processed = 0
+    for impression in impressions():
+        if impression.source_split != "test":
+            continue
+        if limit is not None and processed >= limit:
+            break
+        processed += 1
+        yield impression
 
 
 def _selected_history_length(path: Path) -> int | None:
@@ -307,16 +331,26 @@ def _write_results(path: Path, results: Iterable[RetrievalResult]) -> int:
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     writer: pq.ParquetWriter | None = None
     count = 0
+    pending: list[dict[str, object]] = []
     try:
         for result in results:
             rows = _result_rows((result,))
             if not rows:
                 continue
+            pending.extend(rows)
+            count += len(rows)
+            if len(pending) < 65536:
+                continue
             if writer is None:
                 writer = pq.ParquetWriter(temporary, schema, compression="zstd")
             assert writer is not None
-            writer.write_table(pa.Table.from_pylist(rows, schema=schema))
-            count += len(rows)
+            writer.write_table(pa.Table.from_pylist(pending, schema=schema))
+            pending = []
+        if pending:
+            if writer is None:
+                writer = pq.ParquetWriter(temporary, schema, compression="zstd")
+            assert writer is not None
+            writer.write_table(pa.Table.from_pylist(pending, schema=schema))
         if writer is None:
             pq.write_table(pa.Table.from_pylist([], schema=schema), temporary)
     finally:
@@ -346,9 +380,11 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
     def impressions() -> Iterable[Impression]:
         return _iter_impressions(impressions_path)
 
-    popularity = PopularityModel.from_impressions(impressions())
+    popularity = PopularityModel.from_impressions(impressions(), articles)
     retriever = _create_retriever(mapping, articles, output_directory)
     candidates = _history_lengths(mapping)
+    offline_limit = _positive_limit(mapping, "offline_impressions_limit")
+    selection_limit = _positive_limit(mapping, "history_selection_limit") or offline_limit
     selected, validation_scores = evaluate_history_lengths_stream(
         impressions,
         histories,
@@ -357,13 +393,14 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         popularity,
         candidates,
         k=100,
+        max_impressions=selection_limit,
     )
     full_rows = _write_results(
         output_directory / "full_corpus.parquet",
         (
             full_corpus_retrieval(
                 impression,
-                histories.get((impression.user_id, impression.source_split)),
+                history_for_impression(histories, impression),
                 articles,
                 retriever,
                 popularity,
@@ -371,7 +408,7 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
                 200,
             )
             for impression in tqdm(
-                (value for value in impressions() if value.source_split != "train"),
+                _offline_impressions(impressions, offline_limit),
                 desc=f"{system} full-corpus retrieval",
                 unit="impression",
             )
@@ -382,14 +419,14 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         (
             impression_candidate_scoring(
                 impression,
-                histories.get((impression.user_id, impression.source_split)),
+                history_for_impression(histories, impression),
                 articles,
                 retriever,
                 popularity,
                 selected,
             )
             for impression in tqdm(
-                (value for value in impressions() if value.source_split != "train"),
+                _offline_impressions(impressions, offline_limit),
                 desc=f"{system} candidate scoring",
                 unit="impression",
             )
@@ -405,6 +442,8 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         "selection_metric": "recall_at_100",
         "history_length": selected,
         "validation_scores": serialized_scores,
+        "offline_impressions_limit": offline_limit,
+        "history_selection_limit": selection_limit,
     }
     output_directory.mkdir(parents=True, exist_ok=True)
     (output_directory / "selection.json").write_text(
@@ -459,7 +498,7 @@ def retrieve_competition_from_config(
         (
             impression_candidate_scoring(
                 impression,
-                histories.get((impression.user_id, "competition_test")),
+                history_for_impression(histories, impression),
                 articles,
                 retriever,
                 popularity,

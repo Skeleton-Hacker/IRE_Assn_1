@@ -15,3 +15,5 @@ retrieval:
   - config/retrieval/bge.yaml
 evaluation: config/evaluation.yaml
 benchmark: config/benchmark.yaml
+offline_impressions_limit: 100000
+history_selection_limit: 100000

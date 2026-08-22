@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ire_assn1.retrieval.normalization import LanguageNormalizer
-from ire_assn1.retrieval.types import Article, SearchHit
+from ire_assn1.retrieval.types import Article, EligibleArticle, SearchHit
 
 
 class _BM25Backend(Protocol):
@@ -55,6 +55,7 @@ class BM25Retriever:
         }
         self.article_ids = tuple(sorted(tokenized))
         self.documents = tokenized
+        self.term_counts = {article_id: Counter(tokens) for article_id, tokens in tokenized.items()}
         self.document_lengths = {
             article_id: len(tokens) for article_id, tokens in tokenized.items()
         }
@@ -67,6 +68,11 @@ class BM25Retriever:
         for tokens in tokenized.values():
             document_frequency.update(set(tokens))
         self.document_frequency = document_frequency
+        document_count = len(self.article_ids)
+        self.inverse_document_frequency = {
+            term: math.log(1.0 + (document_count - frequency + 0.5) / (frequency + 0.5))
+            for term, frequency in document_frequency.items()
+        }
         self._backend = _load_bm25()(k1=k1, b=b)
         self.k1 = k1
         self.b = b
@@ -99,36 +105,42 @@ class BM25Retriever:
             for token in self.documents.get(article_id, ())
         ]
 
-    def _all_scores(self, profile_article_ids: Sequence[str]) -> dict[str, float]:
+    def _search(
+        self,
+        profile_article_ids: Sequence[str],
+        eligible_ids: EligibleArticle,
+        k: int,
+    ) -> tuple[SearchHit, ...]:
         query = self._query(profile_article_ids)
-        if not query or not self.article_ids:
-            return {}
-        documents, scores = self._backend.retrieve(
-            [query],
-            corpus=self.article_ids,
-            k=len(self.article_ids),
-            show_progress=True,
-        )
-        return {
-            str(article_id): float(score)
-            for article_id, score in zip(documents[0], scores[0], strict=True)
-        }
+        if not query or not self.article_ids or k <= 0:
+            return ()
+        requested = min(len(self.article_ids), max(k, 1))
+        while requested:
+            documents, scores = self._backend.retrieve(
+                [query],
+                corpus=self.article_ids,
+                k=requested,
+                show_progress=False,
+            )
+            hits = tuple(
+                SearchHit(str(article_id), float(score))
+                for article_id, score in zip(documents[0], scores[0], strict=True)
+                if str(article_id) in eligible_ids
+            )
+            if len(hits) >= k or requested == len(self.article_ids):
+                return tuple(sorted(hits, key=lambda hit: (-hit.score, hit.article_id))[:k])
+            requested = min(len(self.article_ids), max(requested * 2, k))
+        return ()
 
     def retrieve(
         self,
         profile_article_ids: Sequence[str],
-        eligible_ids: Collection[str],
+        eligible_ids: EligibleArticle,
         k: int,
     ) -> tuple[SearchHit, ...]:
         if k <= 0:
             return ()
-        eligible = set(eligible_ids)
-        hits = (
-            SearchHit(article_id, score)
-            for article_id, score in self._all_scores(profile_article_ids).items()
-            if article_id in eligible
-        )
-        return tuple(sorted(hits, key=lambda hit: (-hit.score, hit.article_id))[:k])
+        return self._search(profile_article_ids, eligible_ids, k)
 
     def score(
         self,
@@ -141,21 +153,17 @@ class BM25Retriever:
                 article_id: 0.0 for article_id in set(candidate_ids) if article_id in self.documents
             }
         scores: dict[str, float] = {}
-        document_count = len(self.article_ids)
-        for article_id in set(candidate_ids) & set(self.article_ids):
-            term_counts = Counter(self.documents[article_id])
+        for article_id in set(candidate_ids):
+            term_counts = self.term_counts.get(article_id)
+            if term_counts is None:
+                continue
             document_length = self.document_lengths[article_id]
             score = 0.0
             for term in query_terms:
                 frequency = term_counts.get(term, 0)
                 if not frequency:
                     continue
-                frequency_in_documents = self.document_frequency[term]
-                inverse_document_frequency = math.log(
-                    1.0
-                    + (document_count - frequency_in_documents + 0.5)
-                    / (frequency_in_documents + 0.5)
-                )
+                inverse_document_frequency = self.inverse_document_frequency[term]
                 denominator = frequency + self.k1 * (
                     1.0 - self.b + self.b * document_length / self.average_document_length
                 )

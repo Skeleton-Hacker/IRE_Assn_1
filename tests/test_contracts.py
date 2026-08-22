@@ -33,6 +33,7 @@ def test_normalized_schema_fields_are_stable() -> None:
         "article_ids",
         "timestamps",
         "source_split",
+        "impression_id",
     ]
     assert IMPRESSIONS_SCHEMA.names == [
         "impression_id",

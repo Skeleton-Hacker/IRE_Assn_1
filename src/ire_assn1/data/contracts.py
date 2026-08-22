@@ -31,6 +31,7 @@ HISTORIES_SCHEMA = pa.schema(
         pa.field("article_ids", STRING_LIST, nullable=False),
         pa.field("timestamps", NULLABLE_TIMESTAMP_LIST, nullable=False),
         pa.field("source_split", pa.string(), nullable=False),
+        pa.field("impression_id", pa.string()),
     ]
 )
 

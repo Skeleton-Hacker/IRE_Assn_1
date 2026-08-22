@@ -10,7 +10,7 @@ from typing import Any, Protocol, cast
 import psutil
 
 from ire_assn1.paths import project_path
-from ire_assn1.retrieval.pipeline import full_corpus_retrieval
+from ire_assn1.retrieval.pipeline import full_corpus_retrieval, history_for_impression
 from ire_assn1.retrieval.profiles import PopularityModel
 from ire_assn1.retrieval.runner import (
     _create_retriever,
@@ -95,7 +95,7 @@ def benchmark_from_config(config: Path | Mapping[str, object]) -> Path:
                     len(
                         full_corpus_retrieval(
                             impression,
-                            histories.get((impression.user_id, impression.source_split)),
+                            history_for_impression(histories, impression),
                             articles,
                             retriever,
                             popularity,

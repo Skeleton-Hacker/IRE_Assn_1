@@ -6,12 +6,13 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from tqdm.auto import tqdm
 
 from ire_assn1.retrieval.profiles import (
+    ArticleEligibility,
     PopularityModel,
     build_history_profile,
-    eligible_article_ids,
 )
 from ire_assn1.retrieval.types import (
     Article,
+    EligibleArticle,
     History,
     Impression,
     RetrievalResult,
@@ -22,28 +23,56 @@ from ire_assn1.retrieval.types import (
 
 
 def _fallback_hits(
-    available_ids: Collection[str],
+    available_ids: EligibleArticle,
     popularity: PopularityModel,
     k: int,
+    all_article_ids: Collection[str] = (),
 ) -> tuple[SearchHit, ...]:
+    if isinstance(available_ids, ArticleEligibility):
+        if popularity.ranked_ids:
+            return popularity.rank_matching(available_ids.__contains__, k=k)
+        return popularity.rank(
+            tuple(article_id for article_id in all_article_ids if article_id in available_ids), k
+        )
     return popularity.rank(available_ids, k)
 
 
 def _complete_hits(
     primary: Sequence[SearchHit],
-    available_ids: Collection[str],
+    available_ids: EligibleArticle,
     popularity: PopularityModel,
     k: int,
+    all_article_ids: Collection[str] = (),
 ) -> tuple[SearchHit, ...]:
     selected = {hit.article_id for hit in primary}
     completed = list(primary)
-    missing = popularity.rank(set(available_ids) - selected)
+    if isinstance(available_ids, ArticleEligibility):
+        if popularity.ranked_ids:
+            missing = popularity.rank_matching(available_ids.__contains__, excluded_ids=selected)
+        else:
+            missing = popularity.rank(
+                tuple(
+                    article_id
+                    for article_id in all_article_ids
+                    if article_id not in selected and article_id in available_ids
+                )
+            )
+    else:
+        missing = popularity.rank(set(available_ids) - selected)
     minimum = min((hit.score for hit in primary), default=0.0)
     for offset, hit in enumerate(missing, start=1):
         completed.append(SearchHit(hit.article_id, minimum - float(offset)))
         if len(completed) == k:
             break
     return tuple(completed[:k])
+
+
+def history_for_impression(
+    histories: Mapping[tuple[str, str], History], impression: Impression
+) -> History | None:
+    return histories.get((impression.impression_id, impression.source_split)) or histories.get(
+        (impression.user_id, impression.source_split)
+    )
 
 
 def full_corpus_retrieval(
@@ -65,17 +94,18 @@ def full_corpus_retrieval(
         retriever.represented_ids,
     )
     read_ids = set(history.article_ids) if history is not None else set()
-    available = eligible_article_ids(articles, impression.timestamp, read_ids)
-    represented = set(available) & retriever.represented_ids
+
+    available = ArticleEligibility(articles, impression.timestamp, read_ids)
+
     used_fallback = not profile.article_ids
     if used_fallback:
-        hits = _fallback_hits(available, popularity, k)
+        hits = _fallback_hits(available, popularity, k, articles.keys())
     else:
-        primary = tuple(retriever.retrieve(profile.article_ids, represented, k))
+        primary = tuple(retriever.retrieve(profile.article_ids, available, k))
         used_fallback = not primary
         hits = primary
-        if len(hits) < min(k, len(available)):
-            hits = _complete_hits(hits, available, popularity, k)
+        if len(hits) < k:
+            hits = _complete_hits(hits, available, popularity, k, articles.keys())
     clicked = set(impression.clicked_ids)
     scored = tuple(
         ScoredArticle(
@@ -204,7 +234,7 @@ def evaluate_history_lengths(
                 continue
             result = full_corpus_retrieval(
                 impression,
-                histories.get((impression.user_id, impression.source_split)),
+                history_for_impression(histories, impression),
                 articles,
                 retriever,
                 popularity,
@@ -225,21 +255,28 @@ def evaluate_history_lengths_stream(
     popularity: PopularityModel,
     candidates: Sequence[int | None],
     k: int = 100,
+    max_impressions: int | None = None,
 ) -> tuple[int | None, dict[int | None, float]]:
+    if max_impressions is not None and max_impressions <= 0:
+        raise ValueError("max_impressions must be positive when provided")
     scores: dict[int | None, float] = {}
     for history_length in candidates:
         recalls: list[float] = []
+        processed = 0
         for impression in tqdm(
             (value for value in impressions() if value.source_split == "validation"),
             desc=f"{retriever.system} validation history={history_length}",
             unit="impression",
         ):
+            if max_impressions is not None and processed >= max_impressions:
+                break
+            processed += 1
             relevant = set(impression.clicked_ids)
             if not relevant:
                 continue
             result = full_corpus_retrieval(
                 impression,
-                histories.get((impression.user_id, impression.source_split)),
+                history_for_impression(histories, impression),
                 articles,
                 retriever,
                 popularity,

@@ -65,6 +65,9 @@ class ScoredArticle:
     position: int | None
 
 
+EligibleArticle = Collection[str]
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievalResult:
     impression_id: str
@@ -87,7 +90,7 @@ class Retriever(Protocol):
     def retrieve(
         self,
         profile_article_ids: Sequence[str],
-        eligible_ids: Collection[str],
+        eligible_ids: EligibleArticle,
         k: int,
     ) -> Sequence[SearchHit]: ...
 

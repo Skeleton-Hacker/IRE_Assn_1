@@ -37,7 +37,8 @@ def _history_lengths(
         source_split = str(row["source_split"])
         length = len(row.get("article_ids") or [])
         effective = min(length, selected) if selected is not None else length
-        lengths[(str(row["user_id"]), source_split)] = effective
+        key = str(row["impression_id"]) if row.get("impression_id") else str(row["user_id"])
+        lengths[(key, source_split)] = effective
         if source_split == "train":
             training.append(length)
     return lengths, tuple(training)
@@ -64,7 +65,10 @@ def _rankings(
             article_ids=tuple(str(row["article_id"]) for row in rows),
             labels=tuple(float(row["label"] or 0) for row in rows),
             scores=tuple(float(row["score"]) for row in rows),
-            history_length=histories.get((str(rows[0]["user_id"]), "test"), 0),
+            history_length=histories.get(
+                (str(rows[0]["impression_id"]), "test"),
+                histories.get((str(rows[0]["user_id"]), "test"), 0),
+            ),
         )
         for impression_id, rows in sorted(groups.items())
         if rows
@@ -82,7 +86,10 @@ def _recommendations(
             user_id=str(rows[0]["user_id"]),
             article_ids=tuple(str(row["article_id"]) for row in rows),
             relevant_ids=relevant.get(impression_id, frozenset()),
-            history_length=histories.get((str(rows[0]["user_id"]), "test"), 0),
+            history_length=histories.get(
+                (str(rows[0]["impression_id"]), "test"),
+                histories.get((str(rows[0]["user_id"]), "test"), 0),
+            ),
         )
         for impression_id, rows in sorted(groups.items())
         if rows
