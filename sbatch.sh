@@ -37,6 +37,7 @@ set +a
 : "${HF_TOKEN:?HF_TOKEN must be set in .env}"
 
 export PYTHONUNBUFFERED=1
+pixi run -e gpu doctor --config config/base.yaml
 CONFIG="${IRE_CONFIG:-config/codabench.yaml}"
 RESUME_ARGS=()
 if [[ -n "${IRE_RESUME:-}" ]]; then
