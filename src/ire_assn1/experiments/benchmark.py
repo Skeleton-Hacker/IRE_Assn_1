@@ -4,6 +4,7 @@ import importlib
 import json
 import time
 from collections.abc import Mapping
+from itertools import islice
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -14,9 +15,9 @@ from ire_assn1.retrieval.pipeline import full_corpus_retrieval, history_for_impr
 from ire_assn1.retrieval.profiles import PopularityModel
 from ire_assn1.retrieval.runner import (
     _create_retriever,
+    _iter_impressions,
     _read_articles,
     _read_histories,
-    _read_impressions,
     _selected_history_length,
 )
 from ire_assn1.retrieval.types import Retriever
@@ -63,18 +64,21 @@ def benchmark_from_config(config: Path | Mapping[str, object]) -> Path:
     retrieval = project_path("data") / "retrieval" / name / variant / system
     articles = _read_articles(processed / "articles.parquet")
     histories = _read_histories(processed / "histories.parquet")
+    limit_value = benchmark.get("max_impressions", 1000)
+    if not isinstance(limit_value, int) or isinstance(limit_value, bool) or limit_value <= 0:
+        raise ValueError("benchmark.max_impressions must be a positive integer")
     impressions = tuple(
-        sorted(
+        islice(
             (
                 impression
-                for impression in _read_impressions(processed / "impressions.parquet")
+                for impression in _iter_impressions(processed / "impressions.parquet")
                 if impression.source_split == "test"
             ),
-            key=lambda impression: impression.impression_id,
+            limit_value,
         )
     )
     popularity = PopularityModel.from_impressions(
-        _read_impressions(processed / "impressions.parquet")
+        _iter_impressions(processed / "impressions.parquet")
     )
     selected = _selected_history_length(retrieval / "selection.json")
     indexes = benchmark.get("semantic_indexes", ["exact", "hnsw"]) if system == "bge" else ["bm25"]
@@ -112,6 +116,7 @@ def benchmark_from_config(config: Path | Mapping[str, object]) -> Path:
                         "fraction": fraction,
                         "repetition": repetition,
                         "impressions": size,
+                        "population_impressions": len(impressions),
                         "rows": rows,
                         "elapsed_seconds": elapsed,
                         "throughput_impressions_per_second": size / elapsed,

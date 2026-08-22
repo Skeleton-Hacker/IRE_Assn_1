@@ -156,8 +156,11 @@ class DenseRetriever:
         query = self.profile_vector(profile_article_ids)
         if query is None:
             return {}
+        represented = [article_id for article_id in candidate_ids if article_id in self.positions]
+        if not represented:
+            return {}
+        positions = [self.positions[article_id] for article_id in represented]
+        scores = self.vectors[positions] @ query
         return {
-            article_id: float(np.dot(query, self.vectors[self.positions[article_id]]))
-            for article_id in candidate_ids
-            if article_id in self.positions
+            article_id: float(score) for article_id, score in zip(represented, scores, strict=True)
         }

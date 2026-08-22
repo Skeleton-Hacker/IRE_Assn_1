@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,10 +14,12 @@ from ire_assn1.evaluation.types import EvaluationData, RankingRecord, Recommenda
 from ire_assn1.paths import project_path
 
 
-def _rows(path: Path) -> list[dict[str, Any]]:
+def _iter_rows(path: Path) -> Iterable[dict[str, Any]]:
     if not path.is_file():
         raise FileNotFoundError(path)
-    return cast(list[dict[str, Any]], pq.read_table(path).to_pylist())
+    parquet = pq.ParquetFile(path)
+    for batch in parquet.iter_batches(batch_size=8192):
+        yield from cast(list[dict[str, Any]], batch.to_pylist())
 
 
 def _selected_history_length(path: Path) -> int | None:
@@ -29,7 +31,9 @@ def _selected_history_length(path: Path) -> int | None:
 
 
 def _history_lengths(
-    rows: Iterable[dict[str, Any]], selected: int | None
+    rows: Iterable[dict[str, Any]],
+    selected: int | None,
+    required_keys: Collection[str] | None = None,
 ) -> tuple[dict[tuple[str, str], int], tuple[int, ...]]:
     lengths: dict[tuple[str, str], int] = {}
     training: list[int] = []
@@ -38,6 +42,8 @@ def _history_lengths(
         length = len(row.get("article_ids") or [])
         effective = min(length, selected) if selected is not None else length
         key = str(row["impression_id"]) if row.get("impression_id") else str(row["user_id"])
+        if source_split != "train" and required_keys is not None and key not in required_keys:
+            continue
         lengths[(key, source_split)] = effective
         if source_split == "train":
             training.append(length)
@@ -146,21 +152,36 @@ def load_retrieval_evaluation_data(run: EvaluationRunConfig) -> EvaluationData:
     retrieval = project_path("data") / "retrieval" / run.dataset / run.variant / run.system
     bge_retrieval = project_path("data") / "retrieval" / run.dataset / run.variant / "bge"
     selected = _selected_history_length(retrieval / "selection.json")
-    history_lengths, training_history_lengths = _history_lengths(
-        _rows(processed / "histories.parquet"), selected
+    candidate_groups = _group_predictions(_iter_rows(retrieval / "impression_candidates.parquet"))
+    full_groups = _group_predictions(_iter_rows(retrieval / "full_corpus.parquet"))
+    required_keys = {
+        str(row["impression_id"])
+        for rows in (*candidate_groups.values(), *full_groups.values())
+        for row in rows
+    }
+    required_keys.update(
+        str(row["user_id"])
+        for rows in (*candidate_groups.values(), *full_groups.values())
+        for row in rows
     )
-    candidate_groups = _group_predictions(_rows(retrieval / "impression_candidates.parquet"))
-    full_groups = _group_predictions(_rows(retrieval / "full_corpus.parquet"))
-    candidates = _rows(processed / "candidates.parquet")
-    impressions = _rows(processed / "impressions.parquet")
+    history_lengths, training_history_lengths = _history_lengths(
+        _iter_rows(processed / "histories.parquet"), selected, required_keys
+    )
+    evaluation_ids = set(candidate_groups) | set(full_groups)
     relevant = {
         str(row["impression_id"]): frozenset(str(item) for item in row.get("clicked_ids") or [])
-        for row in impressions
-        if row.get("source_split") == "test"
+        for row in _iter_rows(processed / "impressions.parquet")
+        if row.get("source_split") == "test" and str(row["impression_id"]) in evaluation_ids
     }
     rankings = _rankings(candidate_groups, history_lengths)
     recommendations = _recommendations(full_groups, history_lengths, relevant)
-    exposed = {str(row["article_id"]) for row in candidates if row.get("source_split") == "test"}
+    exposed: set[str] = set()
+    training_clicks: Counter[str] = Counter()
+    for row in _iter_rows(processed / "candidates.parquet"):
+        if row.get("source_split") == "train" and int(row.get("label") or 0) > 0:
+            training_clicks[str(row["article_id"])] += int(row["label"])
+        if row.get("source_split") == "test" and str(row["impression_id"]) in candidate_groups:
+            exposed.add(str(row["article_id"]))
     recommended = {
         article_id for record in recommendations for article_id in record.article_ids[:10]
     }
@@ -169,7 +190,7 @@ def load_retrieval_evaluation_data(run: EvaluationRunConfig) -> EvaluationData:
         rankings=rankings,
         recommendations=recommendations,
         training_history_lengths=training_history_lengths,
-        training_clicks=_training_clicks(candidates),
+        training_clicks=dict(training_clicks),
         embeddings=_embeddings(bge_retrieval, recommended),
         exposed_article_ids=frozenset(exposed),
         diagnostic_rankings=diagnostic_rankings,

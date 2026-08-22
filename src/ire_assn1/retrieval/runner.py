@@ -110,23 +110,17 @@ def _integers(value: object) -> tuple[int, ...]:
     raise ValueError(f"Expected a list of labels, received {type(value).__name__}")
 
 
-def _read_rows(path: Path) -> list[dict[str, object]]:
-    if not path.is_file():
-        raise FileNotFoundError(f"Normalized retrieval input does not exist: {path}")
-    return cast(list[dict[str, object]], pq.read_table(path).to_pylist())
-
-
 def _iter_rows(path: Path) -> Iterable[dict[str, object]]:
     if not path.is_file():
         raise FileNotFoundError(f"Normalized retrieval input does not exist: {path}")
     parquet = pq.ParquetFile(path)
     for batch in parquet.iter_batches(batch_size=8192):
-        yield from cast(list[dict[str, object]], pa.Table.from_batches([batch]).to_pylist())
+        yield from cast(list[dict[str, object]], batch.to_pylist())
 
 
 def _read_articles(path: Path) -> dict[str, Article]:
     articles: dict[str, Article] = {}
-    for row in _read_rows(path):
+    for row in _iter_rows(path):
         article_id = str(row["article_id"])
         articles[article_id] = Article(
             article_id=article_id,
@@ -139,7 +133,7 @@ def _read_articles(path: Path) -> dict[str, Article]:
 
 def _read_histories(path: Path) -> dict[tuple[str, str], History]:
     histories: dict[tuple[str, str], History] = {}
-    for row in _read_rows(path):
+    for row in _iter_rows(path):
         source_split = str(row.get("source_split") or "")
         history = History(
             user_id=str(row["user_id"]),
@@ -149,10 +143,6 @@ def _read_histories(path: Path) -> dict[tuple[str, str], History]:
         key = str(row["impression_id"]) if row.get("impression_id") else history.user_id
         histories[(key, source_split)] = history
     return histories
-
-
-def _read_impressions(path: Path) -> tuple[Impression, ...]:
-    return tuple(_iter_impressions(path))
 
 
 def _iter_impressions(path: Path) -> Iterable[Impression]:
@@ -216,6 +206,7 @@ def _create_retriever(
     mapping: Mapping[str, object],
     articles: Mapping[str, Article],
     output_directory: Path,
+    cache_directory: Path | None = None,
 ) -> Retriever:
     system = _value(mapping, "system", str)
     if system == "bm25":
@@ -240,9 +231,10 @@ def _create_retriever(
         "revision": revision,
         "article_text_sha256": digest.hexdigest(),
     }
-    embeddings_path = output_directory / "article_embeddings.npy"
-    identifiers_path = output_directory / "article_embedding_ids.json"
-    metadata_path = output_directory / "article_embeddings.json"
+    cache_root = cache_directory or output_directory
+    embeddings_path = cache_root / "article_embeddings.npy"
+    identifiers_path = cache_root / "article_embedding_ids.json"
+    metadata_path = cache_root / "article_embeddings.json"
     cache_valid = (
         embeddings_path.is_file()
         and identifiers_path.is_file()
@@ -265,7 +257,7 @@ def _create_retriever(
             device=_optional_string(mapping, "device"),
         )
         article_ids, vectors = encoder.encode_articles(articles)
-        output_directory.mkdir(parents=True, exist_ok=True)
+        cache_root.mkdir(parents=True, exist_ok=True)
         np.save(embeddings_path, vectors)
         identifiers_path.write_text(json.dumps(article_ids), encoding="utf-8")
         metadata_path.write_text(
@@ -492,7 +484,12 @@ def retrieve_competition_from_config(
     popularity = PopularityModel.from_impressions(_iter_impressions(offline_impressions_path))
     selection_path = output_directory.parent / "selection.json"
     selected = _selected_history_length(selection_path)
-    retriever = _create_retriever(mapping, articles, output_directory)
+    retriever = _create_retriever(
+        mapping,
+        articles,
+        output_directory,
+        cache_directory=output_directory.parent,
+    )
     candidate_rows = _write_results(
         output_directory / "impression_candidates.parquet",
         (

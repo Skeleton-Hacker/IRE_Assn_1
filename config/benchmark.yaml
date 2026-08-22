@@ -3,3 +3,4 @@ repetitions: 3
 seed: 146
 semantic_indexes: [exact, hnsw]
 extrapolation_factor: 10
+max_impressions: 1000
