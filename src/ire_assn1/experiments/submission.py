@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import polars as pl
@@ -11,37 +12,67 @@ from ire_assn1.paths import project_path
 from ire_assn1.settings import load_mapping
 
 
-def write_competition_submission(predictions: pl.DataFrame, output: Path) -> int:
+def _write_submission_rows(rows: Iterable[dict[str, Any]], output: Path) -> int:
     required = {"impression_id", "article_id", "position", "score"}
-    missing = required.difference(predictions.columns)
-    if missing:
-        missing_columns = ", ".join(sorted(missing))
-        raise ValueError(f"Competition predictions are missing columns: {missing_columns}")
-    ranked = predictions.sort(
-        ["impression_id", "score", "article_id", "position"],
-        descending=[False, True, False, False],
-    )
-    grouped = ranked.group_by("impression_id", maintain_order=True).agg(
-        pl.col("position"),
-        pl.col("article_id"),
-    )
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
+    current_id: str | None = None
+    current_rows: list[dict[str, Any]] = []
+
+    def write_group(impression_id: str, group: list[dict[str, Any]]) -> None:
+        positions = [int(row["position"]) for row in group]
+        article_ids = [str(row["article_id"]) for row in group]
+        complete = set(positions) == set(range(len(positions)))
+        if len(set(positions)) != len(positions) or not complete:
+            raise ValueError(
+                f"Candidate positions are not a complete permutation for {impression_id}"
+            )
+        if len(set(article_ids)) != len(article_ids):
+            raise ValueError(f"Candidate article IDs are not unique for {impression_id}")
+        ranked = sorted(
+            group,
+            key=lambda row: (-float(row["score"]), str(row["article_id"]), int(row["position"])),
+        )
+        rank_by_position = {int(row["position"]): rank + 1 for rank, row in enumerate(ranked)}
+        raw_id = impression_id.rsplit(":", 1)[-1]
+        ranks = [rank_by_position[position] for position in range(len(positions))]
+        handle.write(f"{raw_id} [{','.join(map(str, ranks))}]\n")
+
     with output.open("w", encoding="utf-8") as handle:
-        for impression_id, positions, article_ids in grouped.iter_rows():
-            complete = set(positions) == set(range(len(positions)))
-            if len(set(positions)) != len(positions) or not complete:
-                raise ValueError(
-                    f"Candidate positions are not a complete permutation for {impression_id}"
-                )
-            if len(set(article_ids)) != len(article_ids):
-                raise ValueError(f"Candidate article IDs are not unique for {impression_id}")
-            rank_by_position = {position: rank + 1 for rank, position in enumerate(positions)}
-            ranks = [rank_by_position[position] for position in range(len(positions))]
-            raw_id = str(impression_id).rsplit(":", 1)[-1]
-            handle.write(f"{raw_id} [{','.join(map(str, ranks))}]\n")
+        for row in rows:
+            missing = required.difference(row)
+            if missing:
+                missing_columns = ", ".join(sorted(missing))
+                raise ValueError(f"Competition predictions are missing columns: {missing_columns}")
+            impression_id = str(row["impression_id"])
+            if current_id is None:
+                current_id = impression_id
+            if impression_id != current_id:
+                write_group(current_id, current_rows)
+                count += 1
+                current_id = impression_id
+                current_rows = []
+            current_rows.append(row)
+        if current_id is not None:
+            write_group(current_id, current_rows)
             count += 1
     return count
+
+
+def write_competition_submission(predictions: pl.DataFrame, output: Path) -> int:
+    return _write_submission_rows(predictions.to_dicts(), output)
+
+
+def write_competition_submission_parquet(predictions: Path, output: Path) -> int:
+    if not predictions.is_file():
+        raise FileNotFoundError(predictions)
+
+    def rows() -> Iterable[dict[str, Any]]:
+        parquet = pq.ParquetFile(predictions)
+        for batch in parquet.iter_batches(batch_size=8192):
+            yield from cast(list[dict[str, Any]], batch.to_pylist())
+
+    return _write_submission_rows(rows(), output)
 
 
 def write_mind_submission(predictions: pl.DataFrame, output: Path) -> None:
@@ -74,7 +105,6 @@ def submit_from_config(config: Path | Mapping[str, object]) -> tuple[Path, Path]
             )
         )
     )
-    predictions = pl.read_parquet(predictions_path)
     data_root = project_path(str(mapping.get("data", "data")))
     expected_path = (
         data_root / "processed" / dataset / variant / "competition_test" / "impressions.parquet"
@@ -88,7 +118,7 @@ def submit_from_config(config: Path | Mapping[str, object]) -> tuple[Path, Path]
             )
         )
     )
-    actual_count = write_competition_submission(predictions, output)
+    actual_count = write_competition_submission_parquet(predictions_path, output)
     if actual_count != expected_count:
         raise ValueError(
             f"Submission contains {actual_count} impressions; expected {expected_count}"
