@@ -85,6 +85,16 @@ def submit_codabench(config: ConfigOption = Path("config/codabench.yaml")) -> No
         submit_from_config(run_config)
 
 
+@app.command("ebnerd-submission")
+def ebnerd_submission(
+    config: ConfigOption = Path("config/codabench.yaml"),
+    system: str = typer.Option(..., "--system"),
+) -> None:
+    from ire_assn1.experiments.runner import ebnerd_submission_from_config
+
+    ebnerd_submission_from_config(config, system)
+
+
 @app.command("bundle-run")
 def bundle_run(run_id: str) -> None:
     from ire_assn1.experiments.bundles import create_bundle

@@ -14,6 +14,7 @@ from ire_assn1.experiments.manifests import (
     write_manifest,
 )
 from ire_assn1.experiments.stages import run_stage
+from ire_assn1.experiments.submission import submit_from_config
 from ire_assn1.experiments.visualization import plot_from_config
 from ire_assn1.paths import project_path
 from ire_assn1.retrieval.runner import retrieve_competition_from_config, retrieve_from_config
@@ -40,6 +41,27 @@ def _run_configs(mapping: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
         for dataset_path in _paths(mapping, "datasets")
         for retrieval_path in _paths(mapping, "retrieval")
     )
+
+
+def ebnerd_submission_from_config(config: Path, system: str) -> None:
+    if system not in {"bm25", "bge"}:
+        raise ValueError("EB-NeRD submission system must be bm25 or bge")
+    mapping = load_mapping(config)
+    matches = tuple(
+        run_config
+        for run_config in _run_configs(mapping)
+        if run_config.get("name") == "ebnerd"
+        and run_config.get("variant") == "large"
+        and run_config.get("system") == system
+    )
+    if len(matches) != 1:
+        raise ValueError(f"No unique EB-NeRD large configuration found for {system}")
+    run_config = {
+        **matches[0],
+        "submission_history_length": mapping.get("submission_history_length", 20),
+    }
+    retrieve_competition_from_config(run_config, submission_only=True)
+    submit_from_config(run_config)
 
 
 def _manifest_for_run(

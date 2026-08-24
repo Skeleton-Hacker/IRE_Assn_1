@@ -202,6 +202,15 @@ def _selected_history_length(path: Path) -> int | None:
     return value
 
 
+def _configured_submission_history_length(mapping: Mapping[str, object]) -> int | None:
+    value = mapping.get("submission_history_length", 20)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("submission_history_length must be a positive integer or null")
+    return value
+
+
 def _create_retriever(
     mapping: Mapping[str, object],
     articles: Mapping[str, Article],
@@ -456,6 +465,7 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
 
 def retrieve_competition_from_config(
     config: str | Path | Mapping[str, object],
+    submission_only: bool = False,
 ) -> RetrievalRunSummary:
     mapping = dict(config) if isinstance(config, Mapping) else load_mapping(config)
     dataset = _value(mapping, "name", str)
@@ -483,7 +493,11 @@ def retrieve_competition_from_config(
     competition_impressions_path = competition_directory / "impressions.parquet"
     popularity = PopularityModel.from_impressions(_iter_impressions(offline_impressions_path))
     selection_path = output_directory.parent / "selection.json"
-    selected = _selected_history_length(selection_path)
+    selected = (
+        _configured_submission_history_length(mapping)
+        if submission_only
+        else _selected_history_length(selection_path)
+    )
     retriever = _create_retriever(
         mapping,
         articles,
@@ -512,7 +526,9 @@ def retrieve_competition_from_config(
         "dataset": dataset,
         "variant": variant,
         "system": system,
-        "selection_metric": "offline_recall_at_100",
+        "selection_metric": (
+            "configured_submission_history" if submission_only else "offline_recall_at_100"
+        ),
         "history_length": selected,
         "candidate_rows": candidate_rows,
     }

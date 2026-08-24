@@ -17,3 +17,4 @@ evaluation: config/evaluation.yaml
 benchmark: config/benchmark.yaml
 offline_impressions_limit: 10000
 history_selection_limit: 10000
+submission_history_length: 20

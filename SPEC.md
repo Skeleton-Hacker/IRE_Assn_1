@@ -100,8 +100,12 @@ for submission preparation. It downloads the unlabeled MINDlarge test and EB-NeR
 bundles, writes competition feature stores below
 `data/processed/{dataset}/{variant}/competition_test`, scores only supplied in-view candidates,
 and prepares rank-permutation outputs. `pixi run -e gpu submit-codabench` writes validated text and
-ZIP submissions below `output/submissions`. `sbatch sbatch.sh` runs the large pipeline in a
-four-day Slurm allocation. Every stage remains independently runnable.
+ZIP submissions below `output/submissions`. `ebnerd-submission` is a submission-only path for the
+large EB-NeRD competition package: it scores supplied candidates without offline retrieval,
+evaluation, benchmarking, or plotting, using the configured submission history length. The
+`sbatch_ebnerd_submission.sh` job runs one system selected by `IRE_SYSTEM`. `sbatch sbatch.sh`
+runs the large analysis pipeline in a four-day Slurm allocation. Every stage remains independently
+runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.

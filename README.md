@@ -67,6 +67,11 @@ impressions to bound runtime and output size; competition candidate scoring rema
 The benchmark uses the first 1,000 test impressions in feature-store order for its 25%, 50%, and
 100% workloads before the configured 10x extrapolation.
 
+For deadline-critical EB-NeRD submissions, run `sbatch_ebnerd_submission.sh` twice with
+`IRE_SYSTEM=bm25` and `IRE_SYSTEM=bge`. This path assumes the large feature stores are already
+prepared, scores only supplied competition candidates, and uses `submission_history_length` from
+the Codabench configuration.
+
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean
 source manifest and produce versioned manifests. Use `--allow-dirty` only for non-reportable
