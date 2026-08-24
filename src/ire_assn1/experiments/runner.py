@@ -31,10 +31,16 @@ def _paths(mapping: Mapping[str, Any], key: str) -> tuple[str, ...]:
 def _run_configs(mapping: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     evaluation = mapping.get("evaluation", "config/evaluation.yaml")
     benchmark = mapping.get("benchmark", "config/benchmark.yaml")
+    retrieval_limits = {
+        key: mapping[key]
+        for key in ("offline_impressions_limit", "history_selection_limit")
+        if key in mapping
+    }
     return tuple(
         {
             **load_mapping(dataset_path),
             **load_mapping(retrieval_path),
+            **retrieval_limits,
             "evaluation": evaluation,
             "benchmark": benchmark,
         }
