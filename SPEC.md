@@ -104,8 +104,9 @@ ZIP submissions below `output/submissions`. `ebnerd-submission` is a submission-
 large EB-NeRD competition package: it scores supplied candidates without offline retrieval,
 evaluation, benchmarking, or plotting, using the configured submission history length. The
 `sbatch_ebnerd_submission.sh` job runs one system selected by `IRE_SYSTEM`. `sbatch sbatch.sh`
-runs the large analysis pipeline in a four-day Slurm allocation. Every stage remains independently
-runnable.
+runs the large analysis pipeline in a four-day Slurm allocation. `sbatch_mind_submission.sh`
+serializes already-generated MIND competition candidates without rerunning retrieval. Every stage
+remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.

@@ -70,7 +70,8 @@ The benchmark uses the first 1,000 test impressions in feature-store order for i
 For deadline-critical EB-NeRD submissions, run `sbatch_ebnerd_submission.sh` twice with
 `IRE_SYSTEM=bm25` and `IRE_SYSTEM=bge`. This path assumes the large feature stores are already
 prepared, scores only supplied competition candidates, and uses `submission_history_length` from
-the Codabench configuration.
+the Codabench configuration. For MIND, submit the already-generated competition candidates with
+`sbatch --nodelist=NODE --export=ALL,IRE_SYSTEM=bge sbatch_mind_submission.sh`.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean
