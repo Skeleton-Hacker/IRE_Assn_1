@@ -86,6 +86,11 @@ def _archive_submission(output: Path) -> Path:
     return archive
 
 
+def _default_submission_path(dataset: str, variant: str, system: str) -> Path:
+    filename = "mind_prediction.txt" if dataset == "mind" else "predictions.txt"
+    return Path("output") / "submissions" / dataset / variant / system / filename
+
+
 def submit_from_config(config: Path | Mapping[str, object]) -> tuple[Path, Path]:
     mapping = dict(config) if isinstance(config, Mapping) else load_mapping(config)
     dataset = str(mapping["name"])
@@ -114,7 +119,7 @@ def submit_from_config(config: Path | Mapping[str, object]) -> tuple[Path, Path]
         str(
             mapping.get(
                 "submission",
-                Path("output") / "submissions" / f"{dataset}-{variant}-{system}.txt",
+                _default_submission_path(dataset, variant, system),
             )
         )
     )

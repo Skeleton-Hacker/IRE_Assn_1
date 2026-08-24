@@ -153,5 +153,7 @@ systems on both final datasets, all offline metrics and slices, benchmark eviden
 visualizations, two submissions per leaderboard, compact manifests, and reproducible commands.
 
 Competition submissions use one line per impression in the Codabench rank-permutation format and
-are validated to contain every supplied candidate position exactly once. Full retrieval outputs
-remain ignored unless an explicit requirement demands otherwise.
+are validated to contain every supplied candidate position exactly once. Default archives use
+`mind_prediction.txt` for MIND and `predictions.txt` for EB-NeRD, with each system kept in its
+own output directory. Full retrieval outputs remain ignored unless an explicit requirement
+demands otherwise.

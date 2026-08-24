@@ -4,6 +4,7 @@ import polars as pl
 import pytest
 
 from ire_assn1.experiments.submission import (
+    _default_submission_path,
     submit_from_config,
     write_competition_submission,
     write_mind_submission,
@@ -39,6 +40,11 @@ def test_competition_submission_rejects_incomplete_positions(tmp_path: Path) -> 
     )
     with pytest.raises(ValueError, match="complete permutation"):
         write_competition_submission(predictions, tmp_path / "submission.txt")
+
+
+def test_default_submission_paths_use_codabench_filenames() -> None:
+    assert _default_submission_path("mind", "large", "bge").name == "mind_prediction.txt"
+    assert _default_submission_path("ebnerd", "large", "bm25").name == "predictions.txt"
 
 
 def test_submit_from_config_writes_text_and_zip(tmp_path: Path) -> None:
