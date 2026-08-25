@@ -87,7 +87,7 @@ def _archive_submission(output: Path) -> Path:
 
 
 def _default_submission_path(dataset: str, variant: str, system: str) -> Path:
-    filename = "mind_prediction.txt" if dataset == "mind" else "predictions.txt"
+    filename = "prediction.txt" if dataset == "mind" else "predictions.txt"
     return Path("output") / "submissions" / dataset / variant / system / filename
 
 

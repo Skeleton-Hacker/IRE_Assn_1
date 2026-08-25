@@ -43,7 +43,7 @@ def test_competition_submission_rejects_incomplete_positions(tmp_path: Path) -> 
 
 
 def test_default_submission_paths_use_codabench_filenames() -> None:
-    assert _default_submission_path("mind", "large", "bge").name == "mind_prediction.txt"
+    assert _default_submission_path("mind", "large", "bge").name == "prediction.txt"
     assert _default_submission_path("ebnerd", "large", "bm25").name == "predictions.txt"
 
 
