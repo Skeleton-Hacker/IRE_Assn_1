@@ -5,5 +5,6 @@ archive_url: https://ebnerd-dataset.s3.eu-west-1.amazonaws.com/ebnerd_large.zip
 archive: ebnerd_large.zip
 test_archive_url: https://ebnerd-dataset.s3.eu-west-1.amazonaws.com/ebnerd_testset.zip
 test_archive: ebnerd_testset.zip
+embedding_source: bert
 availability: published_at
 validation_days: 1

@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 from tqdm.auto import tqdm
 
 from ire_assn1.paths import project_path
+from ire_assn1.retrieval.artifacts import load_provided_embeddings
 from ire_assn1.retrieval.bge import BGEEncoder, DenseRetriever
 from ire_assn1.retrieval.bm25 import BM25Retriever
 from ire_assn1.retrieval.indexes import ExactFaissIndex, HNSWFaissIndex
@@ -216,6 +217,7 @@ def _create_retriever(
     articles: Mapping[str, Article],
     output_directory: Path,
     cache_directory: Path | None = None,
+    data_root: Path | None = None,
 ) -> Retriever:
     system = _value(mapping, "system", str)
     if system == "bm25":
@@ -227,52 +229,74 @@ def _create_retriever(
         )
     if system != "bge":
         raise ValueError(f"Unsupported retrieval system: {system}")
-    model = str(mapping.get("model", "BAAI/bge-m3"))
-    revision = _optional_string(mapping, "revision")
-    digest = hashlib.sha256()
-    for article_id, article in sorted(articles.items()):
-        digest.update(article_id.encode())
-        digest.update(b"\0")
-        digest.update(article.text.encode())
-        digest.update(b"\0")
-    expected_cache = {
-        "model": model,
-        "revision": revision,
-        "article_text_sha256": digest.hexdigest(),
-    }
-    cache_root = cache_directory or output_directory
-    embeddings_path = cache_root / "article_embeddings.npy"
-    identifiers_path = cache_root / "article_embedding_ids.json"
-    metadata_path = cache_root / "article_embeddings.json"
-    cache_valid = (
-        embeddings_path.is_file()
-        and identifiers_path.is_file()
-        and metadata_path.is_file()
-        and json.loads(metadata_path.read_text(encoding="utf-8")) == expected_cache
-    )
-    if cache_valid:
-        vectors = np.asarray(np.load(embeddings_path), dtype=np.float32)
-        identifiers = json.loads(identifiers_path.read_text(encoding="utf-8"))
-        if not isinstance(identifiers, list) or not all(
-            isinstance(item, str) for item in identifiers
-        ):
-            raise ValueError("Cached article embedding identifiers are invalid")
-        article_ids = tuple(cast(list[str], identifiers))
-    else:
-        encoder = BGEEncoder(
-            model=model,
-            revision=revision,
-            batch_size=_integer(mapping, "batch_size", 32),
-            device=_optional_string(mapping, "device"),
+    if mapping.get("embedding_source") is not None:
+        dataset = _value(mapping, "name", str)
+        variant = _value(mapping, "variant", str)
+        provided = load_provided_embeddings(
+            data_root or project_path(str(mapping.get("data", "data"))),
+            dataset,
+            variant,
+            articles,
+            mapping,
         )
-        article_ids, vectors = encoder.encode_articles(articles)
+        article_ids, vectors = provided.article_ids, provided.vectors
+        cache_root = cache_directory or output_directory
         cache_root.mkdir(parents=True, exist_ok=True)
-        np.save(embeddings_path, vectors)
-        identifiers_path.write_text(json.dumps(article_ids), encoding="utf-8")
-        metadata_path.write_text(
-            json.dumps(expected_cache, indent=2, sort_keys=True) + "\n",
+        np.save(cache_root / "article_embeddings.npy", vectors)
+        (cache_root / "article_embedding_ids.json").write_text(
+            json.dumps(article_ids), encoding="utf-8"
+        )
+        (cache_root / "article_embeddings.json").write_text(
+            json.dumps({"embedding_source": mapping["embedding_source"]}, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+    else:
+        model = str(mapping.get("model", "BAAI/bge-m3"))
+        revision = _optional_string(mapping, "revision")
+        digest = hashlib.sha256()
+        for article_id, article in sorted(articles.items()):
+            digest.update(article_id.encode())
+            digest.update(b"\0")
+            digest.update(article.text.encode())
+            digest.update(b"\0")
+        expected_cache = {
+            "model": model,
+            "revision": revision,
+            "article_text_sha256": digest.hexdigest(),
+        }
+        cache_root = cache_directory or output_directory
+        embeddings_path = cache_root / "article_embeddings.npy"
+        identifiers_path = cache_root / "article_embedding_ids.json"
+        metadata_path = cache_root / "article_embeddings.json"
+        cache_valid = (
+            embeddings_path.is_file()
+            and identifiers_path.is_file()
+            and metadata_path.is_file()
+            and json.loads(metadata_path.read_text(encoding="utf-8")) == expected_cache
+        )
+        if cache_valid:
+            vectors = np.asarray(np.load(embeddings_path), dtype=np.float32)
+            identifiers = json.loads(identifiers_path.read_text(encoding="utf-8"))
+            if not isinstance(identifiers, list) or not all(
+                isinstance(item, str) for item in identifiers
+            ):
+                raise ValueError("Cached article embedding identifiers are invalid")
+            article_ids = tuple(cast(list[str], identifiers))
+        else:
+            encoder = BGEEncoder(
+                model=model,
+                revision=revision,
+                batch_size=_integer(mapping, "batch_size", 32),
+                device=_optional_string(mapping, "device"),
+            )
+            article_ids, vectors = encoder.encode_articles(articles)
+            cache_root.mkdir(parents=True, exist_ok=True)
+            np.save(embeddings_path, vectors)
+            identifiers_path.write_text(json.dumps(article_ids), encoding="utf-8")
+            metadata_path.write_text(
+                json.dumps(expected_cache, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
     index_name = str(mapping.get("index", "exact"))
     if index_name == "exact":
         index = ExactFaissIndex(article_ids, vectors)
@@ -382,7 +406,7 @@ def retrieve_from_config(config: str | Path | Mapping[str, object]) -> Retrieval
         return _iter_impressions(impressions_path)
 
     popularity = PopularityModel.from_impressions(impressions(), articles)
-    retriever = _create_retriever(mapping, articles, output_directory)
+    retriever = _create_retriever(mapping, articles, output_directory, data_root=data_root)
     candidates = _history_lengths(mapping)
     offline_limit = _positive_limit(mapping, "offline_impressions_limit")
     selection_limit = _positive_limit(mapping, "history_selection_limit") or offline_limit
@@ -503,6 +527,7 @@ def retrieve_competition_from_config(
         articles,
         output_directory,
         cache_directory=output_directory.parent,
+        data_root=data_root,
     )
     candidate_rows = _write_results(
         output_directory / "impression_candidates.parquet",

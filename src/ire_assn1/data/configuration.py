@@ -36,6 +36,7 @@ class EbnerdDatasetConfig(BaseModel):
     archive: str
     test_archive_url: str | None = None
     test_archive: str | None = None
+    embedding_source: Literal["bert", "roberta", "contrastive"] = "bert"
     availability: Literal["published_at"]
     validation_days: int = Field(default=1, ge=1)
 

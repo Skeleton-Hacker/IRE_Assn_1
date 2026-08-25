@@ -3,5 +3,6 @@ variant: demo
 language: da
 archive_url: https://ebnerd-dataset.s3.eu-west-1.amazonaws.com/ebnerd_demo.zip
 archive: ebnerd_demo.zip
+embedding_source: bert
 availability: published_at
 validation_days: 1

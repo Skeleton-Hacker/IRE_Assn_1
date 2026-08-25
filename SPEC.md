@@ -50,7 +50,9 @@ stopword removal. Danish diacritics are preserved. Stemming is disabled. Primary
 `k1=1.2` and `b=0.75`. Queries concatenate title and abstract from the most recent eligible clicked
 articles.
 
-BGE uses `BAAI/bge-m3` dense embeddings of title and abstract. Article vectors are L2-normalized.
+MIND semantic retrieval uses `BAAI/bge-m3` dense embeddings of title and abstract. EB-NeRD
+semantic retrieval uses the supplied multilingual BERT article artifacts by default. All article
+vectors are L2-normalized.
 User vectors are the normalized mean of eligible recent article vectors. Exact FAISS inner-product
 search is primary. HNSW is benchmark-only.
 
