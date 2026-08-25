@@ -5,8 +5,11 @@ import os
 import stat
 import urllib.request
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
+from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 
 from tqdm.auto import tqdm
@@ -24,6 +27,18 @@ class DownloadedArchive:
     url: str
     archive: Path
     extracted: Path
+
+
+@contextmanager
+def _exclusive_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle: BinaryIO
+    with path.open("a+b") as handle:
+        flock(handle.fileno(), LOCK_EX)
+        try:
+            yield
+        finally:
+            flock(handle.fileno(), LOCK_UN)
 
 
 def _download_file(url: str, destination: Path, auth_env: str | None = None) -> None:
@@ -103,10 +118,12 @@ def _download_archive(
     extracted: Path,
     auth_env: str | None = None,
 ) -> DownloadedArchive:
-    _download_file(url, archive, auth_env=auth_env)
-    if not zipfile.is_zipfile(archive):
-        raise ValueError(f"Invalid ZIP archive: {archive}")
-    _extract_archive(archive, extracted, url)
+    lock = archive.with_suffix(f"{archive.suffix}.lock")
+    with _exclusive_lock(lock):
+        _download_file(url, archive, auth_env=auth_env)
+        if not zipfile.is_zipfile(archive):
+            raise ValueError(f"Invalid ZIP archive: {archive}")
+        _extract_archive(archive, extracted, url)
     return DownloadedArchive(url=url, archive=archive, extracted=extracted)
 
 

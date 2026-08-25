@@ -49,7 +49,9 @@ def _run_configs(mapping: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     )
 
 
-def ebnerd_submission_from_config(config: Path, system: str) -> None:
+def ebnerd_submission_from_config(
+    config: Path, system: str, history_length: int | None = None
+) -> None:
     if system not in {"bm25", "bge"}:
         raise ValueError("EB-NeRD submission system must be bm25 or bge")
     mapping = load_mapping(config)
@@ -64,7 +66,11 @@ def ebnerd_submission_from_config(config: Path, system: str) -> None:
         raise ValueError(f"No unique EB-NeRD large configuration found for {system}")
     run_config = {
         **matches[0],
-        "submission_history_length": mapping.get("submission_history_length", 20),
+        "submission_history_length": (
+            history_length
+            if history_length is not None
+            else mapping.get("submission_history_length", 20)
+        ),
         "submission_batch_size": mapping.get("submission_batch_size", 2048),
         "submission_device": mapping.get("submission_device", "cuda"),
     }

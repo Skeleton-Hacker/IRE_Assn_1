@@ -2,6 +2,7 @@
 #SBATCH -J "IRE_MIND_Submission"
 #SBATCH -c 2
 #SBATCH -G 1
+#SBATCH -w gnode092
 #SBATCH -o ./logs/mind_submission_%j.log
 #SBATCH -e ./logs/mind_submission_error_%j.log
 #SBATCH --time="01:00:00"

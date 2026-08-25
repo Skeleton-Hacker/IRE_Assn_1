@@ -108,8 +108,9 @@ bundle and supplied multilingual BERT artifact when absent, builds fixed user pr
 from raw test histories, scores raw in-view candidates in CUDA batches, and checkpoints one text
 chunk per source Parquet row group. It does not run offline retrieval, evaluation, benchmarking,
 plotting, or competition feature-store preparation. Completed chunks and user profiles are reused
-after interruption when their input identities match. `sbatch_ebnerd_submission.sh` invokes this
-path and defaults to the semantic system. `sbatch sbatch.sh`
+after interruption when their input identities match. History lengths 10 and 20 use isolated cache
+and output directories and can run concurrently. `sbatch_ebnerd_submission.sh` invokes this path,
+defaults to history length 10, and accepts `IRE_HISTORY_LENGTH=10` or `20`. `sbatch sbatch.sh`
 runs the large analysis pipeline in a four-day Slurm allocation. `sbatch_mind_submission.sh`
 serializes already-generated MIND competition candidates without rerunning retrieval. Every stage
 remains independently runnable.
@@ -163,9 +164,9 @@ end-to-end evaluation without real datasets, model downloads, or CUDA.
 
 Each retrieval merge request requires CI plus an HPC smoke bundle. Final completion requires both
 systems on both development datasets, all offline metrics and slices, benchmark evidence,
-generated visualizations, one valid submission to each leaderboard, compact manifests, and
-reproducible commands. Large test bundles are used for leaderboard prediction; they are not an
-additional labeled offline evaluation split.
+generated visualizations, two distinct submissions to each leaderboard as clarified in class,
+compact manifests, and reproducible commands. Large test bundles are used for leaderboard
+prediction; they are not an additional labeled offline evaluation split.
 
 Competition submissions use one line per impression in the Codabench rank-permutation format and
 are validated to contain every supplied candidate position exactly once. The MIND archive contains

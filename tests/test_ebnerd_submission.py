@@ -68,3 +68,15 @@ def test_ebnerd_semantic_submission_preserves_rows_and_ranks(tmp_path: Path) -> 
         assert archive.read("predictions.txt").decode() == output.read_text(encoding="utf-8")
 
     assert write_ebnerd_semantic_submission(mapping) == (text_path, archive_path)
+
+    second_output = tmp_path / "submission-h10" / "predictions.txt"
+    second_mapping = {
+        **mapping,
+        "submission_history_length": 10,
+        "submission": str(second_output),
+    }
+    write_ebnerd_semantic_submission(second_mapping)
+
+    cache = tmp_path / "cache" / "ebnerd" / "large" / "bert_submission"
+    assert (cache / "history_20" / "user_profiles.npy").is_file()
+    assert (cache / "history_10" / "user_profiles.npy").is_file()

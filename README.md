@@ -67,12 +67,14 @@ impressions to bound runtime and output size; competition candidate scoring rema
 The benchmark uses the first 1,000 test impressions in feature-store order for its 25%, 50%, and
 100% workloads before the configured 10x extrapolation.
 
-For the EB-NeRD leaderboard submission, run `sbatch_ebnerd_submission.sh`. It defaults to the
-supplied multilingual BERT system, downloads the test and BERT archives when absent, and works
-directly from their raw Parquet files. User profiles and prediction chunks are cached below `data`
-so an interrupted batch job resumes at source row-group boundaries. It does not rebuild the large
-offline feature store. For MIND, submit the already-generated competition candidates with
-`sbatch --nodelist=NODE --export=ALL,IRE_SYSTEM=bge sbatch_mind_submission.sh`.
+For the two EB-NeRD leaderboard submissions, submit `sbatch_ebnerd_submission.sh` with
+`IRE_HISTORY_LENGTH=10` and `20`. Both use the supplied multilingual BERT system, download the test
+and BERT archives when absent, and work directly from their raw Parquet files. Each history variant
+has an isolated cache and output directory below `data` and `output`, so the jobs can run
+concurrently and resume at source row-group boundaries. They do not rebuild the large offline
+feature store. For MIND, use the existing BGE submission and package the already-scored BM25
+competition candidates with
+`sbatch --export=ALL,IRE_SYSTEM=bm25 sbatch_mind_submission.sh`.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports
 whether Git or `.ire-source.json` provided provenance. Official runs require a verified clean

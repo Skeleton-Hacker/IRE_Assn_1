@@ -351,7 +351,9 @@ def write_ebnerd_semantic_submission(
     device = str(mapping.get("submission_device", "cuda"))
     article_ids, article_vectors = _load_embeddings(embedding_path)
     lookup = _article_lookup(article_ids)
-    cache_root = data_root / "cache" / "ebnerd" / "large" / "bert_submission"
+    cache_root = (
+        data_root / "cache" / "ebnerd" / "large" / "bert_submission" / f"history_{history_length}"
+    )
     user_ids, profiles = _profile_cache(
         history_path,
         embedding_path,
@@ -432,7 +434,12 @@ def write_ebnerd_semantic_submission(
         str(
             mapping.get(
                 "submission",
-                Path("output") / "submissions" / "ebnerd" / "large" / "bge" / "predictions.txt",
+                Path("output")
+                / "submissions"
+                / "ebnerd"
+                / "large"
+                / f"bert-h{history_length}"
+                / "predictions.txt",
             )
         )
     )

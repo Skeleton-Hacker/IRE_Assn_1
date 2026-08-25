@@ -15,10 +15,16 @@ umask 077
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 ENV_FILE="$REPO_ROOT/.env"
 SYSTEM="${IRE_SYSTEM:-bge}"
+HISTORY_LENGTH="${IRE_HISTORY_LENGTH:-10}"
 
 case "$SYSTEM" in
   bge) ;;
   *) printf 'This bounded-memory job supports IRE_SYSTEM=bge\n' >&2; exit 1 ;;
+esac
+
+case "$HISTORY_LENGTH" in
+  10|20) ;;
+  *) printf 'IRE_HISTORY_LENGTH must be 10 or 20\n' >&2; exit 1 ;;
 esac
 
 cd "$REPO_ROOT"
@@ -46,4 +52,7 @@ export PYTHONUNBUFFERED=1
 pixi run -e gpu doctor
 CONFIG="${IRE_CONFIG:-config/ebnerd-submission.yaml}"
 
-exec pixi run -e gpu ire-assn1 -- ebnerd-submission --config "$CONFIG" --system "$SYSTEM"
+exec pixi run -e gpu ire-assn1 -- ebnerd-submission \
+  --config "$CONFIG" \
+  --system "$SYSTEM" \
+  --history-length "$HISTORY_LENGTH"

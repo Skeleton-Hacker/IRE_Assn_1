@@ -96,10 +96,11 @@ def submit_codabench(config: ConfigOption = Path("config/codabench.yaml")) -> No
 def ebnerd_submission(
     config: ConfigOption = Path("config/codabench.yaml"),
     system: str = typer.Option(..., "--system"),
+    history_length: int | None = typer.Option(None, "--history-length", min=1),
 ) -> None:
     from ire_assn1.experiments.runner import ebnerd_submission_from_config
 
-    ebnerd_submission_from_config(config, system)
+    ebnerd_submission_from_config(config, system, history_length)
 
 
 @app.command("bundle-run")
