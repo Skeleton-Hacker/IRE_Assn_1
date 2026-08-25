@@ -112,6 +112,9 @@ after interruption when their input identities match. History lengths 10 and 20 
 and output directories and can run concurrently. `sbatch_ebnerd_bert_h10.sh` and
 `sbatch_ebnerd_bert_h20.sh` invoke the explicit variants. `sbatch sbatch.sh`
 runs the large analysis pipeline in a four-day Slurm allocation.
+`sbatch_offline_smallest.sh` runs both retrieval systems, evaluation, benchmarking, and plotting
+on MIND-small and EB-NeRD demo. It uses deterministic 10,000-impression retrieval and
+history-selection samples and requests 64 GiB of Slurm memory.
 `sbatch_mind_bm25_submission.sh` serializes already-generated MIND BM25 competition candidates
 without rerunning retrieval. Every stage remains independently runnable.
 

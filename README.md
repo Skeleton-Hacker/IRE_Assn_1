@@ -67,6 +67,14 @@ impressions to bound runtime and output size; competition candidate scoring rema
 The benchmark uses the first 1,000 test impressions in feature-store order for its 25%, 50%, and
 100% workloads before the configured 10x extrapolation.
 
+The smallest complete offline analysis uses MIND-small and EB-NeRD demo with deterministic
+10,000-impression retrieval and history-selection samples. It runs both retrieval systems,
+evaluation, benchmarks, and plots in a 64 GiB Slurm allocation:
+
+```bash
+sbatch sbatch_offline_smallest.sh
+```
+
 For the two EB-NeRD leaderboard submissions, run `sbatch sbatch_ebnerd_bert_h10.sh` and
 `sbatch sbatch_ebnerd_bert_h20.sh`. Both use the supplied multilingual BERT system, download the
 test and BERT archives when absent, and work directly from their raw Parquet files. Each history
