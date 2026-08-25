@@ -109,11 +109,11 @@ from raw test histories, scores raw in-view candidates in CUDA batches, and chec
 chunk per source Parquet row group. It does not run offline retrieval, evaluation, benchmarking,
 plotting, or competition feature-store preparation. Completed chunks and user profiles are reused
 after interruption when their input identities match. History lengths 10 and 20 use isolated cache
-and output directories and can run concurrently. `sbatch_ebnerd_submission.sh` invokes this path,
-defaults to history length 10, and accepts `IRE_HISTORY_LENGTH=10` or `20`. `sbatch sbatch.sh`
-runs the large analysis pipeline in a four-day Slurm allocation. `sbatch_mind_submission.sh`
-serializes already-generated MIND competition candidates without rerunning retrieval. Every stage
-remains independently runnable.
+and output directories and can run concurrently. `sbatch_ebnerd_bert_h10.sh` and
+`sbatch_ebnerd_bert_h20.sh` invoke the explicit variants. `sbatch sbatch.sh`
+runs the large analysis pipeline in a four-day Slurm allocation.
+`sbatch_mind_bm25_submission.sh` serializes already-generated MIND BM25 competition candidates
+without rerunning retrieval. Every stage remains independently runnable.
 
 All dataset-derived artifacts reside below `data`. Model caches reside below `models`. Run records
 reside below `logs`. Compact result summaries and submissions reside below `output`.

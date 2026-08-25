@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J "IRE_EBNeRD_Submission"
+#SBATCH -J "IRE_EBNeRD_BERT_H20"
 #SBATCH -c 10
 #SBATCH -G 1
 #SBATCH -w gnode092
-#SBATCH -o ./logs/ebnerd_submission_%j.log
-#SBATCH -e ./logs/ebnerd_submission_error_%j.log
+#SBATCH -o ./logs/ebnerd_bert_h20_%j.log
+#SBATCH -e ./logs/ebnerd_bert_h20_error_%j.log
 #SBATCH --time="2-00:00:00"
 #SBATCH --mail-user=yajat.rangnekar@research.iiit.ac.in
 #SBATCH --mail-type=ALL
@@ -14,18 +14,6 @@ umask 077
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 ENV_FILE="$REPO_ROOT/.env"
-SYSTEM="${IRE_SYSTEM:-bge}"
-HISTORY_LENGTH="${IRE_HISTORY_LENGTH:-10}"
-
-case "$SYSTEM" in
-  bge) ;;
-  *) printf 'This bounded-memory job supports IRE_SYSTEM=bge\n' >&2; exit 1 ;;
-esac
-
-case "$HISTORY_LENGTH" in
-  10|20) ;;
-  *) printf 'IRE_HISTORY_LENGTH must be 10 or 20\n' >&2; exit 1 ;;
-esac
 
 cd "$REPO_ROOT"
 
@@ -50,9 +38,8 @@ set +a
 
 export PYTHONUNBUFFERED=1
 pixi run -e gpu doctor
-CONFIG="${IRE_CONFIG:-config/ebnerd-submission.yaml}"
 
 exec pixi run -e gpu ire-assn1 -- ebnerd-submission \
-  --config "$CONFIG" \
-  --system "$SYSTEM" \
-  --history-length "$HISTORY_LENGTH"
+  --config config/ebnerd-submission.yaml \
+  --system bge \
+  --history-length 20

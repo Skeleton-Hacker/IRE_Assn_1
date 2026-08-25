@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J "IRE_MIND_Submission"
+#SBATCH -J "IRE_MIND_BM25"
 #SBATCH -c 2
 #SBATCH -G 1
 #SBATCH -w gnode092
-#SBATCH -o ./logs/mind_submission_%j.log
-#SBATCH -e ./logs/mind_submission_error_%j.log
+#SBATCH -o ./logs/mind_bm25_%j.log
+#SBATCH -e ./logs/mind_bm25_error_%j.log
 #SBATCH --time="01:00:00"
 #SBATCH --mail-user=yajat.rangnekar@research.iiit.ac.in
 #SBATCH --mail-type=ALL
@@ -14,12 +14,6 @@ umask 077
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 ENV_FILE="$REPO_ROOT/.env"
-SYSTEM="${IRE_SYSTEM:-bge}"
-
-case "$SYSTEM" in
-  bm25|bge) ;;
-  *) printf 'IRE_SYSTEM must be bm25 or bge\n' >&2; exit 1 ;;
-esac
 
 cd "$REPO_ROOT"
 
@@ -42,20 +36,17 @@ set +a
 
 : "${HF_TOKEN:?HF_TOKEN must be set in .env}"
 
-PREDICTIONS="$REPO_ROOT/data/retrieval/mind/large/$SYSTEM/competition_test/impression_candidates.parquet"
+PREDICTIONS="$REPO_ROOT/data/retrieval/mind/large/bm25/competition_test/impression_candidates.parquet"
 if [[ ! -s "$PREDICTIONS" ]]; then
-  printf 'Missing MIND competition predictions: %s\n' "$PREDICTIONS" >&2
+  printf 'Missing MIND BM25 competition predictions: %s\n' "$PREDICTIONS" >&2
   exit 1
 fi
 
-export IRE_SYSTEM="$SYSTEM"
 export PYTHONUNBUFFERED=1
 pixi run -e gpu doctor
 
 exec pixi run -e gpu python -c '
-import os
-
 from ire_assn1.experiments.submission import submit_from_config
 
-submit_from_config({"name": "mind", "variant": "large", "system": os.environ["IRE_SYSTEM"]})
+submit_from_config({"name": "mind", "variant": "large", "system": "bm25"})
 '
