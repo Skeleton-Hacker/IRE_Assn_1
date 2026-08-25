@@ -146,12 +146,28 @@ def download_dataset(config: DatasetConfig, data_root: Path) -> tuple[Downloaded
                 root / "extracted",
             ),
         ]
+        if config.articles_archive_url and config.articles_archive:
+            downloaded.append(
+                _download_archive(
+                    config.articles_archive_url,
+                    archives / config.articles_archive,
+                    root / "articles",
+                )
+            )
         if config.test_archive_url and config.test_archive:
             downloaded.append(
                 _download_archive(
                     config.test_archive_url,
                     archives / config.test_archive,
                     root / "competition_test",
+                )
+            )
+        if config.embedding_archive_url and config.embedding_archive:
+            downloaded.append(
+                _download_archive(
+                    config.embedding_archive_url,
+                    archives / config.embedding_archive,
+                    root / "embeddings" / config.embedding_source,
                 )
             )
         return tuple(downloaded)
@@ -164,3 +180,35 @@ def download_from_config(config_path: str | Path) -> tuple[DownloadedArchive, ..
     for dataset in datasets:
         downloaded.extend(download_dataset(dataset, data_root))
     return tuple(downloaded)
+
+
+def download_ebnerd_submission_assets(
+    config_path: str | Path,
+) -> tuple[DownloadedArchive, ...]:
+    data_root, datasets = load_data_config(config_path)
+    matches = tuple(
+        dataset
+        for dataset in datasets
+        if isinstance(dataset, EbnerdDatasetConfig) and dataset.variant == "large"
+    )
+    if len(matches) != 1:
+        raise ValueError("Expected one EB-NeRD large dataset configuration")
+    config = matches[0]
+    if not config.test_archive_url or not config.test_archive:
+        raise ValueError("EB-NeRD submission requires the official test archive")
+    if not config.embedding_archive_url or not config.embedding_archive:
+        raise ValueError("EB-NeRD semantic submission requires an embedding archive")
+    root = data_root / "raw" / config.name / config.variant
+    archives = root / "archives"
+    return (
+        _download_archive(
+            config.test_archive_url,
+            archives / config.test_archive,
+            root / "competition_test",
+        ),
+        _download_archive(
+            config.embedding_archive_url,
+            archives / config.embedding_archive,
+            root / "embeddings" / config.embedding_source,
+        ),
+    )

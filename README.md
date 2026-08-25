@@ -67,10 +67,11 @@ impressions to bound runtime and output size; competition candidate scoring rema
 The benchmark uses the first 1,000 test impressions in feature-store order for its 25%, 50%, and
 100% workloads before the configured 10x extrapolation.
 
-For deadline-critical EB-NeRD submissions, run `sbatch_ebnerd_submission.sh` twice with
-`IRE_SYSTEM=bm25` and `IRE_SYSTEM=bge`. This path assumes the large feature stores are already
-prepared, scores only supplied competition candidates, and uses `submission_history_length` from
-the Codabench configuration. For MIND, submit the already-generated competition candidates with
+For the EB-NeRD leaderboard submission, run `sbatch_ebnerd_submission.sh`. It defaults to the
+supplied multilingual BERT system, downloads the test and BERT archives when absent, and works
+directly from their raw Parquet files. User profiles and prediction chunks are cached below `data`
+so an interrupted batch job resumes at source row-group boundaries. It does not rebuild the large
+offline feature store. For MIND, submit the already-generated competition candidates with
 `sbatch --nodelist=NODE --export=ALL,IRE_SYSTEM=bge sbatch_mind_submission.sh`.
 
 Individual stages are available through `pixi run ire-assn1 -- --help`. The doctor command reports

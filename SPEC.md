@@ -102,11 +102,14 @@ for submission preparation. It downloads the unlabeled MINDlarge test and EB-NeR
 bundles, writes competition feature stores below
 `data/processed/{dataset}/{variant}/competition_test`, scores only supplied in-view candidates,
 and prepares rank-permutation outputs. `pixi run -e gpu submit-codabench` writes validated text and
-ZIP submissions below `output/submissions`. `ebnerd-submission` is a submission-only path for the
-large EB-NeRD competition package: it scores supplied candidates without offline retrieval,
-evaluation, benchmarking, or plotting, using the configured submission history length. The
-`sbatch_ebnerd_submission.sh` bootstraps only the EB-NeRD packages when node-local storage is
-empty, then runs one system selected by `IRE_SYSTEM`. `sbatch sbatch.sh`
+ZIP submissions below `output/submissions`. `ebnerd-submission --system bge` is the bounded-memory
+submission path for the large EB-NeRD competition package. It downloads only the official test
+bundle and supplied multilingual BERT artifact when absent, builds fixed user profiles directly
+from raw test histories, scores raw in-view candidates in CUDA batches, and checkpoints one text
+chunk per source Parquet row group. It does not run offline retrieval, evaluation, benchmarking,
+plotting, or competition feature-store preparation. Completed chunks and user profiles are reused
+after interruption when their input identities match. `sbatch_ebnerd_submission.sh` invokes this
+path and defaults to the semantic system. `sbatch sbatch.sh`
 runs the large analysis pipeline in a four-day Slurm allocation. `sbatch_mind_submission.sh`
 serializes already-generated MIND competition candidates without rerunning retrieval. Every stage
 remains independently runnable.
@@ -133,6 +136,12 @@ MIND archives are downloaded from the gated Hugging Face repository using the re
 the dataset `auth_env` field, defaulting to `HF_TOKEN`. The token is read only from the process
 environment and is never written to configuration, logs, manifests, or error messages.
 
+The EB-NeRD large configuration includes the official large bundle, test bundle, article-only
+supplement, and multilingual BERT archive. The article supplement is downloaded from the bucket
+root because the `/artifacts/articles_large_only.zip` path printed in the assignment returns 404.
+The test bundle also contains the same complete 125,541-row article table. Its article IDs match
+the supplied BERT artifact exactly.
+
 The tracked `scripts/setup_gnode.sh` command is the HPC environment setup entry point. It reads the
 ignored `.env`, requires `SCRATCH_ROOT` and `HF_TOKEN`, keeps datasets under `data`, links `.pixi`
 and `models` to persistent scratch, moves `data` to persistent scratch and links it back into the
@@ -153,8 +162,10 @@ and bootstrap reproducibility. GitLab CI runs Ruff, formatting checks, Pyright, 
 end-to-end evaluation without real datasets, model downloads, or CUDA.
 
 Each retrieval merge request requires CI plus an HPC smoke bundle. Final completion requires both
-systems on both final datasets, all offline metrics and slices, benchmark evidence, generated
-visualizations, two submissions per leaderboard, compact manifests, and reproducible commands.
+systems on both development datasets, all offline metrics and slices, benchmark evidence,
+generated visualizations, one valid submission to each leaderboard, compact manifests, and
+reproducible commands. Large test bundles are used for leaderboard prediction; they are not an
+additional labeled offline evaluation split.
 
 Competition submissions use one line per impression in the Codabench rank-permutation format and
 are validated to contain every supplied candidate position exactly once. The MIND archive contains

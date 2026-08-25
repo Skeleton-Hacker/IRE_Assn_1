@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from ire_assn1.data.download import download_from_config
+from ire_assn1.data.download import download_ebnerd_submission_assets, download_from_config
 from ire_assn1.data.pipeline import prepare_competition_from_config, prepare_from_config
 from ire_assn1.evaluation.harness import evaluate_from_config
 from ire_assn1.experiments.benchmark import benchmark_from_config
@@ -65,7 +65,15 @@ def ebnerd_submission_from_config(config: Path, system: str) -> None:
     run_config = {
         **matches[0],
         "submission_history_length": mapping.get("submission_history_length", 20),
+        "submission_batch_size": mapping.get("submission_batch_size", 2048),
+        "submission_device": mapping.get("submission_device", "cuda"),
     }
+    if system == "bge":
+        from ire_assn1.experiments.ebnerd_submission import write_ebnerd_semantic_submission
+
+        download_ebnerd_submission_assets(config)
+        write_ebnerd_semantic_submission(run_config)
+        return
     retrieve_competition_from_config(run_config, submission_only=True)
     submit_from_config(run_config)
 

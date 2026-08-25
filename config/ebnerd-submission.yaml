@@ -15,3 +15,5 @@ retrieval:
 evaluation: config/evaluation.yaml
 benchmark: config/benchmark.yaml
 submission_history_length: 20
+submission_batch_size: 2048
+submission_device: cuda

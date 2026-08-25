@@ -34,8 +34,13 @@ class EbnerdDatasetConfig(BaseModel):
     language: Literal["da"]
     archive_url: str
     archive: str
+    articles_archive_url: str | None = None
+    articles_archive: str | None = None
     test_archive_url: str | None = None
     test_archive: str | None = None
+    embedding_archive_url: str | None = None
+    embedding_archive: str | None = None
+    embedding_path: Path | None = None
     embedding_source: Literal["bert", "roberta", "contrastive"] = "bert"
     availability: Literal["published_at"]
     validation_days: int = Field(default=1, ge=1)
