@@ -40,6 +40,13 @@ def prepare(config: ConfigOption = Path("config/base.yaml")) -> None:
     prepare_from_config(config)
 
 
+@app.command("prepare-competition")
+def prepare_competition(config: ConfigOption = Path("config/base.yaml")) -> None:
+    from ire_assn1.data.pipeline import prepare_competition_from_config
+
+    prepare_competition_from_config(config)
+
+
 @app.command()
 def retrieve(config: ConfigOption) -> None:
     from ire_assn1.retrieval.runner import retrieve_from_config

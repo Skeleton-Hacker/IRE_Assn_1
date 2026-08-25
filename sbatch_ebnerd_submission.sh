@@ -2,6 +2,7 @@
 #SBATCH -J "IRE_EBNeRD_Submission"
 #SBATCH -c 10
 #SBATCH -G 1
+#SBATCH -w gnode092
 #SBATCH -o ./logs/ebnerd_submission_%j.log
 #SBATCH -e ./logs/ebnerd_submission_error_%j.log
 #SBATCH --time="2-00:00:00"
@@ -43,11 +44,26 @@ set +a
 
 export PYTHONUNBUFFERED=1
 pixi run -e gpu doctor
-CONFIG="${IRE_CONFIG:-config/codabench.yaml}"
+CONFIG="${IRE_CONFIG:-config/ebnerd-submission.yaml}"
 
+RAW_ROOT="$REPO_ROOT/data/raw/ebnerd/large"
 PREDICTIONS="$REPO_ROOT/data/processed/ebnerd/large/competition_test/impressions.parquet"
+EMBEDDING_FILE="$(find -L "$RAW_ROOT" -type f \( -name 'artifacts.parquet' -o -iname '*embedding*.parquet' -o -iname '*vector*.parquet' \) -print -quit 2>/dev/null || true)"
+if [[ ! -s "$PREDICTIONS" || -z "$EMBEDDING_FILE" ]]; then
+  pixi run -e gpu python -m ire_assn1 download --config "$CONFIG"
+  pixi run -e gpu python -m ire_assn1 prepare --config "$CONFIG"
+  pixi run -e gpu python -m ire_assn1 prepare-competition --config "$CONFIG"
+fi
+
+EMBEDDING_FILE="$(find -L "$RAW_ROOT" -type f \( -name 'artifacts.parquet' -o -iname '*embedding*.parquet' -o -iname '*vector*.parquet' \) -print -quit 2>/dev/null || true)"
+
 if [[ ! -s "$PREDICTIONS" ]]; then
   printf 'Missing EB-NeRD competition feature store: %s\n' "$PREDICTIONS" >&2
+  exit 1
+fi
+
+if [[ "$SYSTEM" == bge && -z "${EMBEDDING_FILE:-}" ]]; then
+  printf 'Missing supplied EB-NeRD embedding artifacts below %s\n' "$RAW_ROOT" >&2
   exit 1
 fi
 

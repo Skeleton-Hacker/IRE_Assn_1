@@ -1,0 +1,17 @@
+project:
+  seed: 146
+  allow_dirty: false
+paths:
+  data: data
+  models: models
+  logs: logs
+  output: output
+  plots: plots
+datasets:
+  - config/datasets/ebnerd-large.yaml
+retrieval:
+  - config/retrieval/bm25.yaml
+  - config/retrieval/bge.yaml
+evaluation: config/evaluation.yaml
+benchmark: config/benchmark.yaml
+submission_history_length: 20

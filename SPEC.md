@@ -94,7 +94,7 @@ memory scaling, PCA, and sampled t-SNE.
 
 ## Commands And Artifacts
 
-The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prepare`, `retrieve`,
+The `ire-assn1` Typer CLI exposes `doctor`, `source-manifest`, `download`, `prepare`, `prepare-competition`, `retrieve`,
 `evaluate`, `benchmark`, `plot`, `submit`, `submit-codabench`, `bundle-run`, `validate-run`, and `reproduce`. Pixi
 exposes local verification and full CPU/GPU environments. `pixi run -e gpu reproduce` executes the
 small smoke pipeline. `pixi run -e gpu reproduce-codabench` executes the large-dataset pipeline
@@ -105,7 +105,8 @@ and prepares rank-permutation outputs. `pixi run -e gpu submit-codabench` writes
 ZIP submissions below `output/submissions`. `ebnerd-submission` is a submission-only path for the
 large EB-NeRD competition package: it scores supplied candidates without offline retrieval,
 evaluation, benchmarking, or plotting, using the configured submission history length. The
-`sbatch_ebnerd_submission.sh` job runs one system selected by `IRE_SYSTEM`. `sbatch sbatch.sh`
+`sbatch_ebnerd_submission.sh` bootstraps only the EB-NeRD packages when node-local storage is
+empty, then runs one system selected by `IRE_SYSTEM`. `sbatch sbatch.sh`
 runs the large analysis pipeline in a four-day Slurm allocation. `sbatch_mind_submission.sh`
 serializes already-generated MIND competition candidates without rerunning retrieval. Every stage
 remains independently runnable.
