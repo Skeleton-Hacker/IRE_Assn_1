@@ -15,6 +15,7 @@ def clustered_bootstrap_interval(
     seed: int = 146,
     confidence: float = 0.95,
     statistic: Callable[[Sequence[float]], float] | None = None,
+    bias_correct: bool = False,
 ) -> ConfidenceInterval | None:
     result = clustered_bootstrap(
         observations,
@@ -22,6 +23,7 @@ def clustered_bootstrap_interval(
         seed=seed,
         confidence=confidence,
         statistic=statistic,
+        bias_correct=bias_correct,
     )
     return result[0] if result is not None else None
 
@@ -32,6 +34,7 @@ def clustered_bootstrap[T](
     seed: int = 146,
     confidence: float = 0.95,
     statistic: Callable[[Sequence[T]], float] | None = None,
+    bias_correct: bool = False,
 ) -> tuple[ConfidenceInterval, tuple[float, ...]] | None:
     if samples <= 0:
         raise ValueError("samples must be positive")
@@ -46,6 +49,9 @@ def clustered_bootstrap[T](
         grouped[user_id].append(value)
     user_ids = sorted(grouped)
     reducer = statistic if statistic is not None else cast(Callable[[Sequence[T]], float], _mean)
+    original = reducer([value for _, value in observations])
+    if not np.isfinite(original):
+        raise ValueError("bootstrap statistic must be finite")
     rng = np.random.default_rng(seed)
     estimates = np.empty(samples, dtype=np.float64)
     for index in range(samples):
@@ -55,6 +61,8 @@ def clustered_bootstrap[T](
         if not np.isfinite(estimate):
             raise ValueError("bootstrap statistic must be finite")
         estimates[index] = estimate
+    if bias_correct:
+        estimates += original - float(np.mean(estimates))
     tail = (1.0 - confidence) / 2.0
     lower, upper = np.quantile(estimates, [tail, 1.0 - tail])
     return (

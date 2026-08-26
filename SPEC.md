@@ -73,7 +73,8 @@ are excluded per metric and exclusion counts are reported.
 Diversity at 10 is mean pairwise cosine distance between BGE article vectors. Novelty at 10 is
 mean self-information from training click popularity with Laplace smoothing alpha one. Coverage
 at 10 divides unique recommended articles by the union of exposed candidate articles in the same
-evaluation slice. Coverage bootstrap replicates resample both recommendations and exposures by user.
+evaluation slice. Coverage bootstrap replicates resample both recommendations and exposures by user
+and applies a bias-corrected percentile interval for this non-additive set statistic.
 
 Cold and warm users are separated at the training median history length. Head articles are the
 smallest popularity-ranked set accounting for 80 percent of training clicks; remaining articles are

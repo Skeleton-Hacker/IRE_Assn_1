@@ -424,6 +424,7 @@ def _coverage_estimate(
         samples=config.bootstrap_samples,
         seed=config.bootstrap_seed,
         statistic=statistic,
+        bias_correct=True,
     )
     interval = bootstrap[0] if bootstrap is not None else None
     name = f"coverage_at_{k}"
