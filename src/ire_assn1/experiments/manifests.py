@@ -131,6 +131,10 @@ def write_manifest(manifest: RunManifest, root: Path | None = None) -> Path:
     path = run_root / "manifest.json"
     payload = manifest.model_dump(mode="json")
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (run_root / "resolved_config.json").write_text(
+        json.dumps(manifest.resolved_config, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return path
 
 

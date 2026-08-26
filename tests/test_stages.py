@@ -54,3 +54,18 @@ def test_completed_stage_is_reusable_only_when_artifacts_match(tmp_path: Path) -
 
     output_path.write_text("changed", encoding="utf-8")
     assert not _reusable_stage(manifest, "stage", (input_path,), (output_path,))
+
+
+def test_stage_records_sampled_peak_rss(tmp_path: Path) -> None:
+    stage = StageRecord(name="stage", state="running", started_at=datetime.now(UTC))
+    manifest = _manifest(stage)
+    output_path = tmp_path / "output.json"
+
+    def operation() -> None:
+        output_path.write_text("output", encoding="utf-8")
+
+    run_stage(manifest, "measured", operation, outputs=(output_path,))
+    measured = manifest.stages[-1]
+    assert measured.state == "complete"
+    assert measured.peak_rss_bytes is not None
+    assert measured.peak_rss_bytes > 0

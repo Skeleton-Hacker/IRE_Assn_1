@@ -46,19 +46,36 @@ def recall_plot(metrics: list[dict[str, Any]], output: Path) -> None:
 
 
 def slice_plot(metrics: list[dict[str, Any]], output: Path) -> None:
-    names = ["recall_at_100", "ndcg_at_10", "diversity_at_10", "novelty_at_10"]
+    names = [
+        "recall_at_100",
+        "ndcg_at_10",
+        "diversity_at_10",
+        "novelty_at_10",
+        "coverage_at_10",
+    ]
     slices = ["overall", "cold", "warm", "head", "tail"]
     lookup = {(item["name"], item["slice_name"]): item for item in metrics}
-    width = 0.16
-    positions = np.arange(len(names))
-    figure, axis = plt.subplots(figsize=(10, 5))
-    for offset, slice_name in enumerate(slices):
-        values = [lookup.get((name, slice_name), {}).get("value") for name in names]
-        numeric = [np.nan if value is None else float(value) for value in values]
-        axis.bar(positions + (offset - 2) * width, numeric, width, label=slice_name)
-    axis.set_xticks(positions, names)
-    axis.set_ylabel("Metric value")
-    axis.legend(ncols=5, fontsize=8)
+    figure, axes = plt.subplots(2, 3, figsize=(12, 7))
+    for axis, name in zip(axes.flat, names, strict=False):
+        selected = [lookup.get((name, slice_name)) for slice_name in slices]
+        labels = [slice_name for slice_name, item in zip(slices, selected, strict=True) if item]
+        items = [item for item in selected if item]
+        values = [float(item["value"]) if item["value"] is not None else np.nan for item in items]
+        lower = []
+        upper = []
+        for value, item in zip(values, items, strict=True):
+            interval = item.get("interval")
+            if interval is None or np.isnan(value):
+                lower.append(0.0)
+                upper.append(0.0)
+            else:
+                lower.append(max(0.0, value - float(interval["lower"])))
+                upper.append(max(0.0, float(interval["upper"]) - value))
+        axis.bar(labels, values, yerr=np.asarray([lower, upper]), capsize=3)
+        axis.set_title(name)
+        axis.tick_params(axis="x", rotation=30)
+        axis.set_ylabel("Value")
+    axes.flat[-1].remove()
     figure.tight_layout()
     figure.savefig(output, dpi=180)
     plt.close(figure)
@@ -94,8 +111,7 @@ def scaling_plot(records: list[dict[str, Any]], output: Path) -> None:
 def memory_plot(records: list[dict[str, Any]], output: Path) -> None:
     labels = sorted({str(record["index"]) for record in records})
     rss = [
-        max(int(record["rss_delta_bytes"]) for record in records if record["index"] == label)
-        / 2**20
+        max(int(record["peak_rss_bytes"]) for record in records if record["index"] == label) / 2**20
         for label in labels
     ]
     cuda = [
@@ -105,7 +121,7 @@ def memory_plot(records: list[dict[str, Any]], output: Path) -> None:
     ]
     positions = np.arange(len(labels))
     figure, axis = plt.subplots(figsize=(6, 4))
-    axis.bar(positions - 0.2, rss, 0.4, label="RSS delta")
+    axis.bar(positions - 0.2, rss, 0.4, label="Peak RSS")
     axis.bar(positions + 0.2, cuda, 0.4, label="Peak CUDA")
     axis.set_xticks(positions, labels)
     axis.set_ylabel("Memory MiB")
@@ -147,7 +163,7 @@ def plot_from_config(config: Path | Mapping[str, object]) -> Path:
     system = str(mapping["system"])
     destination = project_path(str(mapping.get("plots", Path("plots") / name / variant / system)))
     destination.mkdir(parents=True, exist_ok=True)
-    output = project_path("output") / name / variant / system
+    output = project_path(str(mapping.get("output", Path("output") / name / variant / system)))
     metrics_path = project_path(str(mapping.get("metrics", output / "evaluation.json")))
     if metrics_path.is_file():
         metrics = json.loads(metrics_path.read_text(encoding="utf-8"))["metrics"]

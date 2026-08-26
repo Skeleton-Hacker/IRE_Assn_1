@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-import psutil
-
 from ire_assn1.experiments.manifests import (
     ArtifactRecord,
     RunManifest,
@@ -16,6 +14,7 @@ from ire_assn1.experiments.manifests import (
     artifact,
     write_manifest,
 )
+from ire_assn1.experiments.resources import PeakRssSampler
 
 
 def _artifacts(paths: Iterable[Path]) -> list[ArtifactRecord]:
@@ -28,8 +27,15 @@ def _artifacts(paths: Iterable[Path]) -> list[ArtifactRecord]:
                 for child in path.rglob("*")
                 if child.is_file()
                 and (
-                    child.name in {"manifest.json", ".complete.json", "selection.json"}
+                    child.name
+                    in {
+                        "manifest.json",
+                        ".complete.json",
+                        "selection.json",
+                        "sample_predictions.parquet",
+                    }
                     or (child.suffix == ".json" and child.stat().st_size < 16 * 1024 * 1024)
+                    or child.suffix in {".png", ".pdf", ".svg"}
                 )
             )
             if path.is_dir()
@@ -87,6 +93,8 @@ def run_stage[T](
     )
     manifest.stages.append(stage)
     write_manifest(manifest)
+    rss = PeakRssSampler()
+    rss.start()
     try:
         result = operation()
         stage.state = "complete"
@@ -97,9 +105,10 @@ def run_stage[T](
         stage.error = f"{type(error).__name__}: {error}"
         raise
     finally:
+        rss.stop()
         stage.elapsed_seconds = time.perf_counter() - started
         stage.finished_at = datetime.now(UTC)
-        stage.peak_rss_bytes = psutil.Process().memory_info().rss
+        stage.peak_rss_bytes = rss.peak_bytes
         try:
             torch = importlib.import_module("torch")
 
