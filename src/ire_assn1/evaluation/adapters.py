@@ -22,17 +22,8 @@ def _iter_rows(path: Path) -> Iterable[dict[str, Any]]:
         yield from cast(list[dict[str, Any]], batch.to_pylist())
 
 
-def _selected_history_length(path: Path) -> int | None:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    value = payload.get("history_length")
-    if value is not None and not isinstance(value, int):
-        raise ValueError(f"Invalid history length in {path}")
-    return value
-
-
 def _history_lengths(
     rows: Iterable[dict[str, Any]],
-    selected: int | None,
     required_keys: Collection[str] | None = None,
 ) -> tuple[dict[tuple[str, str], int], tuple[int, ...]]:
     lengths: dict[tuple[str, str], int] = {}
@@ -40,11 +31,10 @@ def _history_lengths(
     for row in rows:
         source_split = str(row["source_split"])
         length = len(row.get("article_ids") or [])
-        effective = min(length, selected) if selected is not None else length
         key = str(row["impression_id"]) if row.get("impression_id") else str(row["user_id"])
         if source_split != "train" and required_keys is not None and key not in required_keys:
             continue
-        lengths[(key, source_split)] = effective
+        lengths[(key, source_split)] = length
         if source_split == "train":
             training.append(length)
     return lengths, tuple(training)
@@ -151,7 +141,6 @@ def load_retrieval_evaluation_data(run: EvaluationRunConfig) -> EvaluationData:
     processed = project_path("data") / "processed" / run.dataset / run.variant
     retrieval = project_path("data") / "retrieval" / run.dataset / run.variant / run.system
     bge_retrieval = project_path("data") / "retrieval" / run.dataset / run.variant / "bge"
-    selected = _selected_history_length(retrieval / "selection.json")
     candidate_groups = _group_predictions(_iter_rows(retrieval / "impression_candidates.parquet"))
     full_groups = _group_predictions(_iter_rows(retrieval / "full_corpus.parquet"))
     required_keys = {
@@ -165,7 +154,7 @@ def load_retrieval_evaluation_data(run: EvaluationRunConfig) -> EvaluationData:
         for row in rows
     )
     history_lengths, training_history_lengths = _history_lengths(
-        _iter_rows(processed / "histories.parquet"), selected, required_keys
+        _iter_rows(processed / "histories.parquet"), required_keys
     )
     evaluation_ids = set(candidate_groups) | set(full_groups)
     relevant = {

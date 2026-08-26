@@ -12,7 +12,7 @@ from ire_assn1.evaluation.beyond_accuracy import (
     diversity_at_k,
     novelty_at_k,
 )
-from ire_assn1.evaluation.bootstrap import clustered_bootstrap_interval
+from ire_assn1.evaluation.bootstrap import clustered_bootstrap
 from ire_assn1.evaluation.config import (
     EvaluationConfig,
     EvaluationRunConfig,
@@ -76,14 +76,23 @@ class UserRecord(Protocol):
     def user_id(self) -> str: ...
 
 
-def evaluate(data: EvaluationData, run: EvaluationRunConfig) -> EvaluationResult:
+BootstrapDraws = dict[str, tuple[float, ...]]
+
+
+def evaluate(
+    data: EvaluationData,
+    run: EvaluationRunConfig,
+    bootstrap_draws: BootstrapDraws | None = None,
+) -> EvaluationResult:
     config = run.evaluation
     threshold = cold_warm_threshold(data.training_history_lengths)
     head_ids = head_article_ids(data.training_clicks, config.head_click_share)
     metrics: list[MetricEstimate] = []
-    metrics.extend(_ranking_metrics(data.rankings, config, threshold, head_ids))
-    metrics.extend(_recommendation_metrics(data.recommendations, config, threshold, head_ids))
-    metrics.extend(_beyond_accuracy_metrics(data, config, threshold))
+    metrics.extend(_ranking_metrics(data.rankings, config, threshold, head_ids, bootstrap_draws))
+    metrics.extend(
+        _recommendation_metrics(data.recommendations, config, threshold, head_ids, bootstrap_draws)
+    )
+    metrics.extend(_beyond_accuracy_metrics(data, config, threshold, bootstrap_draws))
     diagnostics = _diagnostics(data.diagnostic_rankings, data.diagnostic_labels, config)
     return EvaluationResult(
         dataset=run.dataset,
@@ -106,9 +115,27 @@ def evaluate_from_config(config: str | Path | dict[str, object]) -> Path:
         from ire_assn1.evaluation.adapters import load_retrieval_evaluation_data
 
         data = load_retrieval_evaluation_data(run)
-    result = evaluate(data, run)
+    bootstrap_draws: BootstrapDraws = {}
+    result = evaluate(data, run, bootstrap_draws)
     destination = run.output_path / "evaluation.json"
-    return write_evaluation_result(result, destination)
+    written = write_evaluation_result(result, destination)
+    bootstrap_path = run.output_path / "bootstrap.json"
+    bootstrap_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "config_hash": run.resolved_hash,
+                "samples": run.evaluation.bootstrap_samples,
+                "seed": run.evaluation.bootstrap_seed,
+                "draws": bootstrap_draws,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return written
 
 
 def load_evaluation_data(path: str | Path) -> EvaluationData:
@@ -159,6 +186,7 @@ def _ranking_metrics(
     config: EvaluationConfig,
     threshold: float,
     head_ids: frozenset[str],
+    bootstrap_draws: BootstrapDraws | None,
 ) -> list[MetricEstimate]:
     functions: list[tuple[str, Callable[[RankingRecord], float | None]]] = [
         ("auc", lambda record: auc(record.labels, record.scores)),
@@ -170,7 +198,7 @@ def _ranking_metrics(
     )
     slices = _ranking_slices(records, threshold, head_ids)
     return [
-        _estimate(name, selected, metric, config, slice_name)
+        _estimate(name, selected, metric, config, slice_name, bootstrap_draws)
         for slice_name, selected in slices.items()
         for name, metric in functions
     ]
@@ -181,20 +209,24 @@ def _recommendation_metrics(
     config: EvaluationConfig,
     threshold: float,
     head_ids: frozenset[str],
+    bootstrap_draws: BootstrapDraws | None,
 ) -> list[MetricEstimate]:
     functions: list[tuple[str, Callable[[RecommendationRecord], float | None]]] = [
         (f"recall_at_{k}", _recall_metric(k)) for k in config.recall_k
     ]
     slices = _recommendation_slices(records, threshold, head_ids)
     return [
-        _estimate(name, selected, metric, config, slice_name)
+        _estimate(name, selected, metric, config, slice_name, bootstrap_draws)
         for slice_name, selected in slices.items()
         for name, metric in functions
     ]
 
 
 def _beyond_accuracy_metrics(
-    data: EvaluationData, config: EvaluationConfig, threshold: float
+    data: EvaluationData,
+    config: EvaluationConfig,
+    threshold: float,
+    bootstrap_draws: BootstrapDraws | None,
 ) -> list[MetricEstimate]:
     k = config.beyond_accuracy_k
     slices: dict[str, tuple[RecommendationRecord, ...]] = {
@@ -220,6 +252,7 @@ def _beyond_accuracy_metrics(
                 _diversity_metric(data.embeddings, k),
                 config,
                 slice_name,
+                bootstrap_draws,
             )
         )
         metrics.append(
@@ -229,19 +262,20 @@ def _beyond_accuracy_metrics(
                 _novelty_metric(data.training_clicks, k, config.novelty_alpha, catalog_size),
                 config,
                 slice_name,
+                bootstrap_draws,
             )
         )
         exposed = data.exposed_article_ids or frozenset(
             article_id for record in data.rankings for article_id in record.article_ids
         )
-        value = coverage_at_k((record.article_ids for record in records), exposed, k)
         metrics.append(
-            MetricEstimate(
-                name=f"coverage_at_{k}",
-                value=value,
-                included=len(records) if value is not None else 0,
-                excluded=0 if value is not None else len(records),
-                slice_name=slice_name,
+            _coverage_estimate(
+                records,
+                exposed,
+                k,
+                config,
+                slice_name,
+                bootstrap_draws,
             )
         )
     return metrics
@@ -329,6 +363,7 @@ def _estimate[RecordT: UserRecord](
     metric: Callable[[RecordT], float | None],
     config: EvaluationConfig,
     slice_name: str,
+    bootstrap_draws: BootstrapDraws | None = None,
 ) -> MetricEstimate:
     observations: list[tuple[str, float]] = []
     for record in records:
@@ -336,16 +371,51 @@ def _estimate[RecordT: UserRecord](
         if value is not None:
             observations.append((record.user_id, value))
     value = sum(item[1] for item in observations) / len(observations) if observations else None
-    interval = clustered_bootstrap_interval(
+    bootstrap = clustered_bootstrap(
         observations,
         samples=config.bootstrap_samples,
         seed=config.bootstrap_seed,
     )
+    interval = bootstrap[0] if bootstrap is not None else None
+    if bootstrap is not None and bootstrap_draws is not None:
+        bootstrap_draws[f"{slice_name}.{name}"] = bootstrap[1]
     return MetricEstimate(
         name=name,
         value=value,
         included=len(observations),
         excluded=len(records) - len(observations),
+        slice_name=slice_name,
+        interval=interval,
+    )
+
+
+def _coverage_estimate(
+    records: Sequence[RecommendationRecord],
+    exposed: frozenset[str],
+    k: int,
+    config: EvaluationConfig,
+    slice_name: str,
+    bootstrap_draws: BootstrapDraws | None,
+) -> MetricEstimate:
+    value = coverage_at_k((record.article_ids for record in records), exposed, k)
+    observations = [(record.user_id, record) for record in records]
+    bootstrap = clustered_bootstrap(
+        observations,
+        samples=config.bootstrap_samples,
+        seed=config.bootstrap_seed,
+        statistic=lambda sample: (
+            coverage_at_k((record.article_ids for record in sample), exposed, k) or 0.0
+        ),
+    )
+    interval = bootstrap[0] if bootstrap is not None else None
+    name = f"coverage_at_{k}"
+    if bootstrap is not None and bootstrap_draws is not None:
+        bootstrap_draws[f"{slice_name}.{name}"] = bootstrap[1]
+    return MetricEstimate(
+        name=name,
+        value=value,
+        included=len(records) if value is not None else 0,
+        excluded=0 if value is not None else len(records),
         slice_name=slice_name,
         interval=interval,
     )

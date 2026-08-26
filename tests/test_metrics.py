@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 
+from ire_assn1.evaluation.adapters import _history_lengths
 from ire_assn1.evaluation.beyond_accuracy import (
     coverage_at_k,
     diversity_at_k,
@@ -70,6 +71,26 @@ def test_slice_definitions() -> None:
     assert target_slices(["a", "c"], [1, 1], head) == frozenset({"head", "tail"})
 
 
+def test_history_slice_lengths_are_not_model_truncated() -> None:
+    rows = [
+        {
+            "impression_id": "i1",
+            "user_id": "u1",
+            "article_ids": ["a", "b", "c", "d"],
+            "source_split": "test",
+        },
+        {
+            "impression_id": None,
+            "user_id": "u2",
+            "article_ids": ["a", "b"],
+            "source_split": "train",
+        },
+    ]
+    lengths, training = _history_lengths(rows)
+    assert lengths == {("i1", "test"): 4, ("u2", "train"): 2}
+    assert training == (2,)
+
+
 def test_clustered_bootstrap_is_deterministic() -> None:
     observations = [("u1", 1.0), ("u1", 0.0), ("u2", 0.25), ("u3", 0.75)]
     first = clustered_bootstrap_interval(observations, samples=200, seed=12)
@@ -131,6 +152,13 @@ def test_harness_reports_slices_exclusions_and_diagnostics(tmp_path: Path) -> No
     }
     assert result.diagnostics[0].available_at_serving_time is False
     assert result.diagnostics[0].excluded_from_submissions is True
+    coverage = next(
+        metric
+        for metric in result.metrics
+        if metric.name == "coverage_at_10" and metric.slice_name == "overall"
+    )
+    assert coverage.interval is not None
+    assert coverage.interval.samples == 20
     path = write_evaluation_result(result, tmp_path / "result.json")
     assert read_evaluation_result(path) == result
 
@@ -189,3 +217,6 @@ def test_config_driven_synthetic_harness(tmp_path: Path) -> None:
     assert destination == output_path / "evaluation.json"
     assert result.dataset == "synthetic"
     assert any(metric.name == "recall_at_1" for metric in result.metrics)
+    bootstrap = json.loads((output_path / "bootstrap.json").read_text(encoding="utf-8"))
+    assert bootstrap["samples"] == 10
+    assert len(bootstrap["draws"]["overall.coverage_at_10"]) == 10
