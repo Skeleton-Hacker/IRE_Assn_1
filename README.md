@@ -75,6 +75,14 @@ evaluation, benchmarks, and plots in a 64 GiB Slurm allocation:
 sbatch sbatch_offline_smallest.sh
 ```
 
+After an evaluation or evidence-only code change, reuse the existing retrieval artifacts with:
+
+```bash
+IRE_CONFIG=config/offline-postprocess.yaml sbatch sbatch.sh
+```
+
+This path does not download, prepare, embed, index, or retrieve again.
+
 For the two EB-NeRD leaderboard submissions, run `sbatch sbatch_ebnerd_bert_h10.sh` and
 `sbatch sbatch_ebnerd_bert_h20.sh`. Both use the supplied multilingual BERT system, download the
 test and BERT archives when absent, and work directly from their raw Parquet files. Each history

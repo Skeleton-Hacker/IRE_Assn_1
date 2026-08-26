@@ -9,6 +9,7 @@ from ire_assn1.data.pipeline import prepare_competition_from_config, prepare_fro
 from ire_assn1.evaluation.harness import evaluate_from_config
 from ire_assn1.experiments.benchmark import benchmark_from_config
 from ire_assn1.experiments.manifests import (
+    RunManifest,
     create_manifest,
     load_manifest,
     write_manifest,
@@ -106,14 +107,12 @@ def _manifest_for_run(
     return previous
 
 
-def reproduce_from_config(
+def _prepare_and_retrieve(
     config: Path,
-    allow_dirty: bool = False,
-    resume_id: str | None = None,
+    manifest: RunManifest,
+    run_configs: tuple[dict[str, Any], ...],
+    resume: bool,
 ) -> None:
-    mapping = load_mapping(config)
-    manifest = _manifest_for_run(config, mapping, allow_dirty, resume_id)
-    write_manifest(manifest)
     data_root = project_path("data")
     run_stage(
         manifest,
@@ -121,7 +120,7 @@ def reproduce_from_config(
         lambda: download_from_config(config),
         inputs=(config,),
         outputs=(data_root / "raw",),
-        resume=resume_id is not None,
+        resume=resume,
     )
     run_stage(
         manifest,
@@ -129,7 +128,7 @@ def reproduce_from_config(
         lambda: prepare_from_config(config),
         inputs=(data_root / "raw",),
         outputs=(data_root / "processed",),
-        resume=resume_id is not None,
+        resume=resume,
     )
     run_stage(
         manifest,
@@ -137,9 +136,8 @@ def reproduce_from_config(
         lambda: prepare_competition_from_config(config),
         inputs=(data_root / "raw", data_root / "processed"),
         outputs=(data_root / "processed",),
-        resume=resume_id is not None,
+        resume=resume,
     )
-    run_configs = _run_configs(mapping)
     for run_config in run_configs:
         name = str(run_config["name"])
         variant = str(run_config["variant"])
@@ -151,7 +149,7 @@ def reproduce_from_config(
             lambda resolved=run_config: retrieve_from_config(resolved),
             inputs=(data_root / "processed" / name / variant,),
             outputs=(retrieval_output,),
-            resume=resume_id is not None,
+            resume=resume,
         )
         competition_input = data_root / "processed" / name / variant / "competition_test"
         if competition_input.is_dir():
@@ -165,8 +163,16 @@ def reproduce_from_config(
                     retrieval_output / "selection.json",
                 ),
                 outputs=(retrieval_output / "competition_test",),
-                resume=resume_id is not None,
+                resume=resume,
             )
+
+
+def _analyze(
+    manifest: RunManifest,
+    run_configs: tuple[dict[str, Any], ...],
+    resume: bool,
+) -> None:
+    data_root = project_path("data")
     for run_config in run_configs:
         name = str(run_config["name"])
         variant = str(run_config["variant"])
@@ -180,8 +186,8 @@ def reproduce_from_config(
                 data_root / "processed" / name / variant,
                 data_root / "retrieval" / name / variant / system,
             ),
-            outputs=(output,),
-            resume=resume_id is not None,
+            outputs=(output / "evaluation.json", output / "bootstrap.json"),
+            resume=resume,
         )
         run_stage(
             manifest,
@@ -191,8 +197,8 @@ def reproduce_from_config(
                 data_root / "processed" / name / variant,
                 data_root / "retrieval" / name / variant / system,
             ),
-            outputs=(output / "benchmark.json",),
-            resume=resume_id is not None,
+            outputs=(output / "benchmark.json", output / "sample_predictions.parquet"),
+            resume=resume,
         )
         plot_output = project_path("plots") / name / variant / system
         run_stage(
@@ -201,6 +207,21 @@ def reproduce_from_config(
             lambda resolved=run_config: plot_from_config(resolved),
             inputs=(output,),
             outputs=(plot_output,),
-            resume=resume_id is not None,
+            resume=resume,
         )
+
+
+def reproduce_from_config(
+    config: Path,
+    allow_dirty: bool = False,
+    resume_id: str | None = None,
+) -> None:
+    mapping = load_mapping(config)
+    manifest = _manifest_for_run(config, mapping, allow_dirty, resume_id)
+    write_manifest(manifest)
+    run_configs = _run_configs(mapping)
+    resume = resume_id is not None
+    if not bool(mapping.get("postprocess_only", False)):
+        _prepare_and_retrieve(config, manifest, run_configs, resume)
+    _analyze(manifest, run_configs, resume)
     write_manifest(manifest)
