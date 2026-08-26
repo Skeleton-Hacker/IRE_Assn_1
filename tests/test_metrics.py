@@ -100,6 +100,17 @@ def test_clustered_bootstrap_is_deterministic() -> None:
     assert first.lower <= 0.5 <= first.upper
 
 
+def test_bias_corrected_bootstrap_is_centered_on_statistic() -> None:
+    interval = clustered_bootstrap_interval(
+        [(f"u{index}", float(index)) for index in range(5)],
+        samples=100,
+        seed=12,
+        bias_correct=True,
+    )
+    assert interval is not None
+    assert interval.lower <= 2.0 <= interval.upper
+
+
 def test_reciprocal_rank_fusion() -> None:
     fused = reciprocal_rank_fusion({"retrieval": ["a", "b"], "future": ["b", "a"]}, k=60)
     assert [item[0] for item in fused] == ["a", "b"]
@@ -213,8 +224,8 @@ def test_coverage_bootstrap_resamples_recommendations_and_exposures(tmp_path: Pa
     )
     assert coverage.value == 0.1
     assert coverage.interval is not None
-    assert coverage.interval.lower == 0.1
-    assert coverage.interval.upper == 0.1
+    assert math.isclose(coverage.interval.lower, 0.1)
+    assert math.isclose(coverage.interval.upper, 0.1)
 
 
 def test_config_driven_synthetic_harness(tmp_path: Path) -> None:
