@@ -242,6 +242,9 @@ def _beyond_accuracy_metrics(
             if user_slice(record.history_length, threshold) == "warm"
         ),
     }
+    exposed_by_impression = {
+        record.impression_id: frozenset(record.article_ids) for record in data.rankings
+    }
     metrics: list[MetricEstimate] = []
     catalog_size = len(data.training_clicks)
     for slice_name, records in slices.items():
@@ -265,13 +268,11 @@ def _beyond_accuracy_metrics(
                 bootstrap_draws,
             )
         )
-        exposed = data.exposed_article_ids or frozenset(
-            article_id for record in data.rankings for article_id in record.article_ids
-        )
         metrics.append(
             _coverage_estimate(
                 records,
-                exposed,
+                exposed_by_impression,
+                data.exposed_article_ids,
                 k,
                 config,
                 slice_name,
@@ -391,21 +392,38 @@ def _estimate[RecordT: UserRecord](
 
 def _coverage_estimate(
     records: Sequence[RecommendationRecord],
-    exposed: frozenset[str],
+    exposed_by_impression: dict[str, frozenset[str]],
+    fallback_exposed: frozenset[str],
     k: int,
     config: EvaluationConfig,
     slice_name: str,
     bootstrap_draws: BootstrapDraws | None,
 ) -> MetricEstimate:
-    value = coverage_at_k((record.article_ids for record in records), exposed, k)
-    observations = [(record.user_id, record) for record in records]
+    observations = [
+        (
+            record.user_id,
+            (
+                record.article_ids,
+                exposed_by_impression.get(record.impression_id, fallback_exposed),
+            ),
+        )
+        for record in records
+    ]
+
+    def statistic(
+        sample: Sequence[tuple[tuple[str, ...], frozenset[str]]],
+    ) -> float:
+        exposed = frozenset(
+            article_id for _, candidate_ids in sample for article_id in candidate_ids
+        )
+        return coverage_at_k((article_ids for article_ids, _ in sample), exposed, k) or 0.0
+
+    value = statistic([observation for _, observation in observations]) if observations else None
     bootstrap = clustered_bootstrap(
         observations,
         samples=config.bootstrap_samples,
         seed=config.bootstrap_seed,
-        statistic=lambda sample: (
-            coverage_at_k((record.article_ids for record in sample), exposed, k) or 0.0
-        ),
+        statistic=statistic,
     )
     interval = bootstrap[0] if bootstrap is not None else None
     name = f"coverage_at_{k}"

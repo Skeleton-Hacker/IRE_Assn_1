@@ -163,6 +163,60 @@ def test_harness_reports_slices_exclusions_and_diagnostics(tmp_path: Path) -> No
     assert read_evaluation_result(path) == result
 
 
+def test_coverage_bootstrap_resamples_recommendations_and_exposures(tmp_path: Path) -> None:
+    rankings = []
+    recommendations = []
+    training_clicks = {}
+    for index in range(20):
+        article_ids = tuple(f"a{index}-{candidate}" for candidate in range(10))
+        rankings.append(
+            RankingRecord(
+                f"i{index}",
+                f"u{index}",
+                article_ids,
+                (1.0, *([0.0] * 9)),
+                tuple(float(10 - candidate) for candidate in range(10)),
+                index,
+            )
+        )
+        recommendations.append(
+            RecommendationRecord(
+                f"i{index}",
+                f"u{index}",
+                (article_ids[0],),
+                frozenset({article_ids[0]}),
+                index,
+            )
+        )
+        training_clicks.update(dict.fromkeys(article_ids, 1))
+    data = EvaluationData(
+        rankings=tuple(rankings),
+        recommendations=tuple(recommendations),
+        training_history_lengths=tuple(range(20)),
+        training_clicks=training_clicks,
+    )
+    run = EvaluationRunConfig(
+        dataset="synthetic",
+        variant="fixture",
+        system="fixture",
+        seed=146,
+        input_path=tmp_path,
+        output_path=tmp_path,
+        evaluation=EvaluationConfig(bootstrap_samples=100, bootstrap_seed=9),
+        resolved_hash="abc",
+    )
+    result = evaluate(data, run)
+    coverage = next(
+        metric
+        for metric in result.metrics
+        if metric.name == "coverage_at_10" and metric.slice_name == "overall"
+    )
+    assert coverage.value == 0.1
+    assert coverage.interval is not None
+    assert coverage.interval.lower == 0.1
+    assert coverage.interval.upper == 0.1
+
+
 def test_config_driven_synthetic_harness(tmp_path: Path) -> None:
     input_path = tmp_path / "input"
     output_path = tmp_path / "output"
