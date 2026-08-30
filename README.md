@@ -20,8 +20,15 @@ models, or CUDA packages.
 ## HPC Setup
 
 Generate `.ire-source.json` locally from the clean commit that will be evaluated, then transfer
-the source tree and that file to the HPC. Do not clone, pull, or configure Git credentials on the
-shared cluster. The source manifest is verified before an official run.
+the source tree and that file to the HPC. Run this from the repository root after committing the
+source changes:
+
+```bash
+pixi run source-manifest
+```
+
+This writes `.ire-source.json` at the repository root. Do not clone, pull, or configure Git
+credentials on the shared cluster. The source manifest is verified before an official run.
 
 On the HPC, place the Pixi environment and package cache on persistent scratch. Set `SCRATCH_ROOT`
 to the cluster's persistent scratch path. Create `.env` from
