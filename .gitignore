@@ -17,10 +17,10 @@ wheels/
 
 /data/
 /models/
-/output/*
-!/output/.gitkeep
-/plots/*
-!/plots/.gitkeep
+# /output/*
+# !/output/.gitkeep
+# /plots/*
+# !/plots/.gitkeep
 /logs/*
 !/logs/.gitkeep
 /.worktrees/

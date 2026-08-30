@@ -1,12 +1,11 @@
 #!/bin/bash
 #SBATCH -J "IRE_OFFLINE_SMALLEST"
-#SBATCH -c 10
+#SBATCH -c 9
 #SBATCH -G 1
 #SBATCH -w gnode092
-#SBATCH --mem=64G
 #SBATCH -o ./logs/offline_smallest_%j.log
 #SBATCH -e ./logs/offline_smallest_error_%j.log
-#SBATCH --time="1-00:00:00"
+#SBATCH --time="4-00:00:00"
 #SBATCH --mail-user=yajat.rangnekar@research.iiit.ac.in
 #SBATCH --mail-type=ALL
 

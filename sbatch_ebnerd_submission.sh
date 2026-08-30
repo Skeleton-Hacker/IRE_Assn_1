@@ -1,11 +1,10 @@
 #!/bin/bash
-#SBATCH -J "IRE_Assn_1"
+#SBATCH -J "IRE_EBNeRD_Submission"
 #SBATCH -c 10
 #SBATCH -G 1
-#SBATCH -w gnode092
-#SBATCH -o ./logs/train_%j.log
-#SBATCH -e ./logs/error_%j.log
-#SBATCH --time="4-00:00:00"
+#SBATCH -o ./logs/ebnerd_submission_%j.log
+#SBATCH -e ./logs/ebnerd_submission_error_%j.log
+#SBATCH --time="2-00:00:00"
 #SBATCH --mail-user=yajat.rangnekar@research.iiit.ac.in
 #SBATCH --mail-type=ALL
 
@@ -14,6 +13,12 @@ umask 077
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 ENV_FILE="$REPO_ROOT/.env"
+SYSTEM="${IRE_SYSTEM:?Set IRE_SYSTEM to bm25 or bge}"
+
+case "$SYSTEM" in
+  bm25|bge) ;;
+  *) printf 'IRE_SYSTEM must be bm25 or bge\n' >&2; exit 1 ;;
+esac
 
 cd "$REPO_ROOT"
 
@@ -37,11 +42,13 @@ set +a
 : "${HF_TOKEN:?HF_TOKEN must be set in .env}"
 
 export PYTHONUNBUFFERED=1
-pixi run -e gpu doctor --config config/base.yaml
+pixi run -e gpu doctor
 CONFIG="${IRE_CONFIG:-config/codabench.yaml}"
-RESUME_ARGS=()
-if [[ -n "${IRE_RESUME:-}" ]]; then
-  RESUME_ARGS=(--resume "$IRE_RESUME")
+
+PREDICTIONS="$REPO_ROOT/data/processed/ebnerd/large/competition_test/impressions.parquet"
+if [[ ! -s "$PREDICTIONS" ]]; then
+  printf 'Missing EB-NeRD competition feature store: %s\n' "$PREDICTIONS" >&2
+  exit 1
 fi
 
-exec pixi run -e gpu ire-assn1 -- reproduce --config "$CONFIG" "${RESUME_ARGS[@]}"
+exec pixi run -e gpu ire-assn1 -- ebnerd-submission --config "$CONFIG" --system "$SYSTEM"
